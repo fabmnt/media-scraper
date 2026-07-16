@@ -3,10 +3,12 @@ import { buildApp } from './app.js';
 
 const config = loadApiConfig();
 const app = await buildApp({
+  accessToken: config.API_ACCESS_TOKEN,
   credentialsRoot: config.CREDENTIALS_ROOT,
   databaseUrl: config.DATABASE_URL,
   mediaRoot: config.MEDIA_ROOT,
   redisUrl: config.REDIS_URL,
+  secureCookie: config.COOKIE_SECURE,
   webOrigin: config.WEB_ORIGIN,
 });
 

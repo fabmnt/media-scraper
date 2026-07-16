@@ -7,6 +7,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { ZodError } from 'zod';
+import { sql } from 'drizzle-orm';
 import { createDatabase } from '@media-scraper/database';
 import {
   COLLECTION_QUEUE_NAME,
@@ -15,16 +16,19 @@ import {
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
+import { registerAuthentication } from './auth.js';
 
 type ApiError = Error & { statusCode?: number };
 
 const ALLOWED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
 
 interface ApiConfig {
+  accessToken: string;
   credentialsRoot: string;
   databaseUrl: string;
   mediaRoot: string;
   redisUrl: string;
+  secureCookie: boolean;
   webOrigin: string;
 }
 
@@ -35,6 +39,7 @@ export async function buildApp(config: ApiConfig) {
   const queue = new Queue<CollectionJobPayload>(COLLECTION_QUEUE_NAME, {
     connection: redis,
   });
+  queue.on('error', (error) => app.log.error(error, 'Collection queue error'));
 
   app.setErrorHandler<ApiError>((error, request, reply) => {
     if (error instanceof ZodError) {
@@ -50,8 +55,13 @@ export async function buildApp(config: ApiConfig) {
   });
 
   await app.register(cors, {
+    credentials: true,
     origin: config.webOrigin,
     methods: ALLOWED_HTTP_METHODS,
+  });
+  await registerAuthentication(app, {
+    accessToken: config.accessToken,
+    secureCookie: config.secureCookie,
   });
   await app.register(swagger, {
     openapi: {
@@ -62,7 +72,7 @@ export async function buildApp(config: ApiConfig) {
   await app.register(fastifyStatic, {
     root: resolve(config.mediaRoot),
     prefix: '/media/',
-    decorateReply: false,
+    decorateReply: true,
   });
   await app.register(credentialRoutes, {
     prefix: '/credentials',
@@ -79,7 +89,15 @@ export async function buildApp(config: ApiConfig) {
     mediaRoot: config.mediaRoot,
   });
 
-  app.get('/health', async () => ({ status: 'ok' }));
+  app.get('/health', async (_request, reply) => {
+    try {
+      await Promise.all([database.db.execute(sql`select 1`), redis.ping()]);
+      return { status: 'ok' };
+    } catch (error) {
+      app.log.error(error, 'Health check failed');
+      return reply.code(503).send({ status: 'unavailable' });
+    }
+  });
   app.addHook('onClose', async () => {
     await queue.close();
     await redis.quit();

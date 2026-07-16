@@ -1,5 +1,9 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   SUPPORTED_PLATFORMS,
   type MediaItem,
@@ -8,16 +12,27 @@ import {
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
+const MEDIA_PAGE_SIZE = 24;
+const SEARCH_DEBOUNCE_MS = 350;
+
 function MediaCard({
   item,
+  deleteDisabled,
+  isDeleting,
   onDelete,
 }: {
+  deleteDisabled: boolean;
   item: MediaItem;
+  isDeleting: boolean;
   onDelete: () => void;
 }) {
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
+
+  useEffect(() => {
+    if (assetIndex >= item.assets.length) setAssetIndex(0);
+  }, [assetIndex, item.assets.length]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -97,12 +112,12 @@ function MediaCard({
             Source
           </a>
           {selectedAsset && (
-            <a download href={api.mediaUrl(selectedAsset.url)}>
+            <a download href={api.downloadUrl(selectedAsset.id)}>
               Download {hasMultipleAssets ? `${assetIndex + 1}` : ''}
             </a>
           )}
-          <button onClick={onDelete} type="button">
-            Delete
+          <button disabled={deleteDisabled} onClick={onDelete} type="button">
+            {isDeleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </div>
@@ -113,11 +128,28 @@ function MediaCard({
 export function Gallery() {
   const [platform, setPlatform] = useState<Platform | undefined>();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const queryClient = useQueryClient();
-  const media = useQuery({
-    queryKey: queryKeys.media(platform, search),
-    queryFn: () => api.listMedia({ platform, search: search || undefined }),
-    refetchInterval: 5_000,
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      SEARCH_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [search]);
+
+  const media = useInfiniteQuery({
+    queryKey: queryKeys.media(platform, debouncedSearch),
+    queryFn: ({ pageParam }) =>
+      api.listMedia({
+        limit: MEDIA_PAGE_SIZE,
+        offset: pageParam,
+        platform,
+        search: debouncedSearch || undefined,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (page) => page.nextOffset ?? undefined,
   });
   const remove = useMutation({
     mutationFn: api.deleteMedia,
@@ -131,6 +163,8 @@ export function Gallery() {
       remove.mutate(item.id);
     }
   }
+
+  const items = media.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
     <section className="gallery-section">
@@ -166,19 +200,32 @@ export function Gallery() {
         </div>
       </div>
       {media.isLoading && <p className="empty-state">Loading your library…</p>}
-      {media.error && <p className="error">{media.error.message}</p>}
-      {media.data?.length === 0 && (
+      {(media.error || remove.error) && (
+        <p className="error">{(media.error ?? remove.error)?.message}</p>
+      )}
+      {!media.isLoading && items.length === 0 && (
         <p className="empty-state">Your collected media will appear here.</p>
       )}
       <div className="media-grid">
-        {media.data?.map((item) => (
+        {items.map((item) => (
           <MediaCard
+            deleteDisabled={remove.isPending}
+            isDeleting={remove.isPending && remove.variables === item.id}
             item={item}
             key={item.id}
             onDelete={() => deleteItem(item)}
           />
         ))}
       </div>
+      {media.hasNextPage && (
+        <button
+          disabled={media.isFetchingNextPage}
+          onClick={() => void media.fetchNextPage()}
+          type="button"
+        >
+          {media.isFetchingNextPage ? 'Loading…' : 'Load more media'}
+        </button>
+      )}
     </section>
   );
 }

@@ -25,12 +25,13 @@ The Docker setup provisions all runtime dependencies automatically.
 
 ```bash
 cp .env.example .env
+# Set API_ACCESS_TOKEN in .env, for example with: openssl rand -hex 32
 docker compose up --build
 ```
 
 The one-shot `migrate` service applies committed database migrations before the API and worker start.
 
-Open the gallery at <http://localhost:5173> and API documentation at <http://localhost:3000/docs>.
+Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only, same-site session cookie; set `COOKIE_SECURE=true` when serving it over HTTPS.
 
 ## Local development
 
@@ -43,7 +44,9 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Downloaded files are stored under `MEDIA_ROOT`. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
+Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resolved from the workspace root so the API and worker always share the same files. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
+
+Extraction is bounded by `MAX_ASSET_BYTES`, `MAX_COLLECTION_BYTES`, and `EXTRACTION_TIMEOUT_MS`. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
 
 ## Instagram authentication
 

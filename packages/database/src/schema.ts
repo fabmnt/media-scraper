@@ -61,6 +61,14 @@ export const mediaItems = pgTable(
   (table) => [
     uniqueIndex('media_items_source_idx').on(table.platform, table.sourceId),
     index('media_items_collected_at_idx').on(table.collectedAt),
+    index('media_items_caption_trgm_idx').using(
+      'gin',
+      table.caption.op('gin_trgm_ops'),
+    ),
+    index('media_items_author_name_trgm_idx').using(
+      'gin',
+      table.authorName.op('gin_trgm_ops'),
+    ),
   ],
 );
 
@@ -73,6 +81,7 @@ export const mediaAssets = pgTable(
       .references(() => mediaItems.id, { onDelete: 'cascade' }),
     type: mediaTypeEnum('type').notNull(),
     fileName: text('file_name').notNull(),
+    position: integer('position').notNull(),
     relativePath: text('relative_path').notNull(),
     mimeType: text('mime_type').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
@@ -87,6 +96,10 @@ export const mediaAssets = pgTable(
       table.contentHash,
     ),
     index('media_assets_hash_idx').on(table.contentHash),
+    uniqueIndex('media_assets_item_position_idx').on(
+      table.mediaItemId,
+      table.position,
+    ),
     index('media_assets_media_item_idx').on(table.mediaItemId),
   ],
 );

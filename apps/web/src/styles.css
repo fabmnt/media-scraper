@@ -1,9 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;600;700;800&display=swap');
-
 :root {
   color: #ebece5;
   background: #111310;
-  font-family: Manrope, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
   --accent: #d9ff57;
   --muted: #93978c;
@@ -192,6 +190,15 @@ button,
 button:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+.text-button {
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+}
+.access-gate {
+  padding-top: 15vh;
 }
 .error {
   color: #ff8075 !important;
