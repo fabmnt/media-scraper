@@ -1,0 +1,90 @@
+import { resolve } from 'node:path';
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
+import { Queue } from 'bullmq';
+import { Redis } from 'ioredis';
+import { ZodError } from 'zod';
+import { createDatabase } from '@media-scraper/database';
+import {
+  COLLECTION_QUEUE_NAME,
+  type CollectionJobPayload,
+} from '@media-scraper/shared';
+import { collectionRoutes } from './routes/collections.js';
+import { credentialRoutes } from './routes/credentials.js';
+import { mediaRoutes } from './routes/media.js';
+
+type ApiError = Error & { statusCode?: number };
+
+const ALLOWED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+
+interface ApiConfig {
+  credentialsRoot: string;
+  databaseUrl: string;
+  mediaRoot: string;
+  redisUrl: string;
+  webOrigin: string;
+}
+
+export async function buildApp(config: ApiConfig) {
+  const app = Fastify({ logger: true });
+  const database = createDatabase(config.databaseUrl);
+  const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+  const queue = new Queue<CollectionJobPayload>(COLLECTION_QUEUE_NAME, {
+    connection: redis,
+  });
+
+  app.setErrorHandler<ApiError>((error, request, reply) => {
+    if (error instanceof ZodError) {
+      return reply.code(400).send({
+        message: 'Invalid request',
+        issues: error.issues,
+      });
+    }
+    request.log.error(error);
+    return reply.code(error.statusCode ?? 500).send({
+      message: error.statusCode ? error.message : 'Internal server error',
+    });
+  });
+
+  await app.register(cors, {
+    origin: config.webOrigin,
+    methods: ALLOWED_HTTP_METHODS,
+  });
+  await app.register(swagger, {
+    openapi: {
+      info: { title: 'Media Scraper API', version: '0.1.0' },
+    },
+  });
+  await app.register(swaggerUi, { routePrefix: '/docs' });
+  await app.register(fastifyStatic, {
+    root: resolve(config.mediaRoot),
+    prefix: '/media/',
+    decorateReply: false,
+  });
+  await app.register(credentialRoutes, {
+    prefix: '/credentials',
+    credentialsRoot: config.credentialsRoot,
+  });
+  await app.register(collectionRoutes, {
+    prefix: '/collections',
+    db: database.db,
+    queue,
+  });
+  await app.register(mediaRoutes, {
+    prefix: '/media-items',
+    db: database.db,
+    mediaRoot: config.mediaRoot,
+  });
+
+  app.get('/health', async () => ({ status: 'ok' }));
+  app.addHook('onClose', async () => {
+    await queue.close();
+    await redis.quit();
+    await database.close();
+  });
+
+  return app;
+}

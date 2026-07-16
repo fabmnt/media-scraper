@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+apps/web/vite.config.d.ts
+apps/web/vite.config.js
+data/credentials/
+data/media/*
+!data/media/.gitkeep

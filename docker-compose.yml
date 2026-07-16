@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: media_scraper
+      POSTGRES_USER: media_scraper
+      POSTGRES_PASSWORD: media_scraper
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U media_scraper']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://media_scraper:media_scraper@postgres:5432/media_scraper
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      DATABASE_URL: postgresql://media_scraper:media_scraper@postgres:5432/media_scraper
+      REDIS_URL: redis://redis:6379
+      MEDIA_ROOT: /data/media
+      CREDENTIALS_ROOT: /data/credentials
+      WEB_ORIGIN: http://localhost:5173
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - media-data:/data/media
+      - credential-data:/data/credentials
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      DATABASE_URL: postgresql://media_scraper:media_scraper@postgres:5432/media_scraper
+      REDIS_URL: redis://redis:6379
+      MEDIA_ROOT: /data/media
+      CREDENTIALS_ROOT: /data/credentials
+      MAX_ASSET_BYTES: 2147483648
+    volumes:
+      - media-data:/data/media
+      - credential-data:/data/credentials:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        VITE_API_URL: http://localhost:3000
+    ports:
+      - '127.0.0.1:5173:4173'
+    depends_on:
+      - api
+
+volumes:
+  credential-data:
+  media-data:
+  postgres-data:
+  redis-data:

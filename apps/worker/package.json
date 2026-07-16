@@ -1,0 +1,28 @@
+{
+  "name": "@media-scraper/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx watch src/index.ts",
+    "lint": "eslint src",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@media-scraper/config": "workspace:*",
+    "@media-scraper/database": "workspace:*",
+    "@media-scraper/extractors": "workspace:*",
+    "@media-scraper/shared": "workspace:*",
+    "bullmq": "^5.66.4",
+    "drizzle-orm": "^0.45.1",
+    "ioredis": "^5.8.2",
+    "mime-types": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/mime-types": "^3.0.1",
+    "tsx": "^4.21.0",
+    "tsup": "^8.5.1"
+  }
+}
