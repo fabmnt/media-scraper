@@ -122,7 +122,10 @@ export async function processCollection(
     );
     const hasCredential = await access(credentialPath)
       .then(() => true)
-      .catch(() => false);
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      });
     const preferredExtractor =
       job.platform === 'instagram' ? 'gallery-dl' : 'yt-dlp';
     const extractedItems = await extractMedia(job.url, outputDirectory, {

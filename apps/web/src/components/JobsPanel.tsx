@@ -105,7 +105,9 @@ export function JobsPanel() {
       </p>
     );
   }
-  if (jobs.length === 0) return null;
+  if (jobs.length === 0) {
+    return <p className="empty-state">No collection activity yet.</p>;
+  }
 
   return (
     <section className="jobs">

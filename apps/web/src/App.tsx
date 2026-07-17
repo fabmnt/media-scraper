@@ -1,68 +1,43 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SUPPORTED_PLATFORMS } from '@media-scraper/shared';
-import { api } from './api';
+import { useQuery } from '@tanstack/react-query';
+import { api, ApiError } from './api';
 import { queryKeys } from './query-keys';
 import { AccessGate } from './components/AccessGate';
-import { CollectionForm } from './components/CollectionForm';
-import { Gallery } from './components/Gallery';
-import { PlatformCredentials } from './components/PlatformCredentials';
-import { JobsPanel } from './components/JobsPanel';
+import { Dashboard } from './components/Dashboard';
+import { LandingPage } from './components/LandingPage';
 
-export function App() {
-  const queryClient = useQueryClient();
+function DashboardRoute() {
   const session = useQuery({
     queryKey: queryKeys.session,
     queryFn: api.getSession,
     retry: false,
   });
-  const logout = useMutation({
-    mutationFn: api.logout,
-    onSuccess: () => {
-      queryClient.clear();
-      window.location.reload();
-    },
-  });
 
   if (session.isLoading) {
-    return <p className="empty-state">Loading archive…</p>;
+    return <p className="empty-state page-loading">Loading archive…</p>;
   }
-  if (!session.data) return <AccessGate />;
+  if (session.error) {
+    if (session.error instanceof ApiError && session.error.status === 401) {
+      return <AccessGate />;
+    }
 
-  return (
-    <>
-      <header>
-        <a className="brand" href="/">
-          M/S
-        </a>
-        <span>Personal media archive</span>
-        <button
-          className="text-button"
-          disabled={logout.isPending}
-          onClick={() => logout.mutate()}
-          type="button"
-        >
-          Sign out
+    return (
+      <main className="access-gate">
+        <p className="error" role="alert">
+          Could not verify your session. {session.error.message}
+        </p>
+        <button onClick={() => void session.refetch()} type="button">
+          Try again
         </button>
-      </header>
-      <main>
-        <section className="hero">
-          <span className="eyebrow">MEDIA SCRAPER / 001</span>
-          <h1>Everything worth keeping, in one place.</h1>
-          <p>
-            Save public social media without losing it in tabs, bookmarks, or
-            feeds.
-          </p>
-        </section>
-        {SUPPORTED_PLATFORMS.map((platform) => (
-          <PlatformCredentials key={platform} platform={platform} />
-        ))}
-        <CollectionForm />
-        <JobsPanel />
-        <Gallery />
       </main>
-      <footer>
-        Built for personal archiving. Preserve attribution and source links.
-      </footer>
-    </>
-  );
+    );
+  }
+  if (!session.data) return null;
+
+  return <Dashboard />;
+}
+
+export function App() {
+  const isDashboard = window.location.pathname.startsWith('/dashboard');
+
+  return isDashboard ? <DashboardRoute /> : <LandingPage />;
 }

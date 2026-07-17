@@ -17,7 +17,8 @@ class InvalidPlatformCredentialError extends Error {
 function isPlatformDomain(domain: string, platformDomain: string) {
   const normalizedDomain = domain
     .replace(HTTP_ONLY_PREFIX, '')
-    .replace(/^\./, '');
+    .replace(/^\./, '')
+    .toLowerCase();
   return (
     normalizedDomain === platformDomain ||
     normalizedDomain.endsWith(`.${platformDomain}`)
@@ -94,7 +95,7 @@ export function normalizePlatformCookies(content: string, platform: Platform) {
     const requiredCookieNames =
       PLATFORM_CREDENTIALS[platform].requiredCookies.join(' and ');
     throw new InvalidPlatformCredentialError(
-      `Cookies must be a Netscape cookies.txt file or Cookie header for ${platform} containing ${requiredCookieNames}`,
+      `Cookies must be a Netscape cookies.txt file or Cookie header for ${PLATFORM_CREDENTIALS[platform].domain} containing ${requiredCookieNames}`,
     );
   }
   return normalized;
@@ -114,8 +115,9 @@ export async function hasPlatformCredential(
   try {
     await access(platformCredentialPath(credentialsRoot, platform));
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
   }
 }
 

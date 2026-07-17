@@ -47,7 +47,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MEDIA_ROOT: /data/media
       CREDENTIALS_ROOT: /data/credentials
-      WEB_ORIGIN: http://localhost:5173
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-5173}}
     ports:
       - '127.0.0.1:3000:3000'
     volumes:
@@ -84,7 +84,7 @@ services:
       args:
         VITE_API_URL: http://localhost:3000
     ports:
-      - '127.0.0.1:5173:4173'
+      - '127.0.0.1:${WEB_PORT:-5173}:4173'
     depends_on:
       - api
 
