@@ -74,6 +74,11 @@ export function Dashboard() {
         >
           Sign out
         </button>
+        {logout.error && (
+          <p className="error" role="alert">
+            Could not sign out. {logout.error.message}
+          </p>
+        )}
       </header>
       <main className="dashboard-main">
         <section className="dashboard-intro">
