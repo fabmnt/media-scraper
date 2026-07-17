@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   useInfiniteQuery,
   useMutation,
@@ -23,15 +23,18 @@ function MediaCard({
   item,
   deleteDisabled,
   isDeleting,
+  previewOpen,
   onDelete,
   onPreview,
 }: {
   deleteDisabled: boolean;
   item: MediaItem;
   isDeleting: boolean;
+  previewOpen: boolean;
   onDelete: () => void;
   onPreview: () => void;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
@@ -39,6 +42,10 @@ function MediaCard({
   useEffect(() => {
     if (assetIndex >= item.assets.length) setAssetIndex(0);
   }, [assetIndex, item.assets.length]);
+
+  useEffect(() => {
+    if (previewOpen) videoRef.current?.pause();
+  }, [previewOpen]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -61,6 +68,7 @@ function MediaCard({
             controls
             key={selectedAsset.id}
             preload="metadata"
+            ref={videoRef}
             src={api.mediaUrl(selectedAsset.url)}
           />
         ) : (
@@ -258,6 +266,7 @@ export function Gallery() {
                     key={item.id}
                     onDelete={() => deleteItem(item)}
                     onPreview={() => setPreviewItemId(item.id)}
+                    previewOpen={Boolean(previewItemId)}
                   />
                 ))}
               </div>

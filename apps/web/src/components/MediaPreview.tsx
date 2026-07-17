@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
+import { VideoFrameCapture } from './VideoFrameCapture';
 
 export function MediaPreview({
   initialItemId,
@@ -66,9 +67,11 @@ export function MediaPreview({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
       if (
-        event.target instanceof HTMLVideoElement &&
-        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+        target instanceof Element &&
+        target.closest('video, input, select, textarea, button, a[href]')
       ) {
         return;
       }
@@ -130,9 +133,8 @@ export function MediaPreview({
               src={api.mediaUrl(asset.url)}
             />
           ) : asset ? (
-            <video
-              controls
-              autoPlay
+            <VideoFrameCapture
+              fileName={asset.fileName}
               key={asset.id}
               src={api.mediaUrl(asset.url)}
             />
