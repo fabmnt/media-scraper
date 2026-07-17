@@ -176,11 +176,10 @@ function assetCount(platform: Platform, metadata: GalleryMetadata) {
   return metadata.count ?? 1;
 }
 
-export async function discoverProfileMedia(
-  { platform, username }: ProfileLookup,
-  cookiesPath?: string,
-): Promise<ProfileMedia[]> {
-  const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
+async function extractProfileSource(
+  url: string,
+  authenticationArguments: string[],
+) {
   let stdout: string;
   try {
     const result = await execFileAsync(
@@ -196,7 +195,7 @@ export async function discoverProfileMedia(
         '--option',
         `tiktok-range=1-${String(MAX_PROFILE_MEDIA)}`,
         ...authenticationArguments,
-        ...profileUrls(platform, username),
+        url,
       ],
       {
         encoding: 'utf8',
@@ -212,21 +211,46 @@ export async function discoverProfileMedia(
     );
   }
 
-  let messages: z.infer<typeof galleryOutputSchema>;
   try {
-    messages = galleryOutputSchema.parse(JSON.parse(stdout));
+    return galleryOutputSchema.parse(JSON.parse(stdout));
   } catch (error) {
     throw new Error('The profile extractor returned invalid metadata.', {
       cause: error,
     });
   }
+}
+
+export async function discoverProfileMedia(
+  { platform, username }: ProfileLookup,
+  cookiesPath?: string,
+): Promise<ProfileMedia[]> {
+  const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
+  const messages: z.infer<typeof galleryOutputSchema> = [];
+  const extractionErrors: Error[] = [];
+  for (const url of profileUrls(platform, username)) {
+    try {
+      const sourceMessages = await extractProfileSource(
+        url,
+        authenticationArguments,
+      );
+      for (const message of sourceMessages) {
+        if (message[0] === GALLERY_ERROR_MESSAGE) {
+          extractionErrors.push(new Error(message[1].message));
+        } else {
+          messages.push(message);
+        }
+      }
+    } catch (error) {
+      extractionErrors.push(
+        error instanceof Error ? error : new Error('Profile extraction failed'),
+      );
+    }
+  }
 
   const mediaByUrl = new Map<string, ProfileMedia>();
   let currentMedia: ProfileMedia | undefined;
   for (const message of messages) {
-    if (message[0] === GALLERY_ERROR_MESSAGE) {
-      throw new Error(message[1].message);
-    }
+    if (message[0] === GALLERY_ERROR_MESSAGE) continue;
 
     if (message[0] === GALLERY_DIRECTORY_MESSAGE) {
       const metadata = message[1];
@@ -276,9 +300,13 @@ export async function discoverProfileMedia(
     }
   }
 
-  return [...mediaByUrl.values()]
+  const media = [...mediaByUrl.values()]
     .sort((left, right) =>
       (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
     )
     .slice(0, MAX_PROFILE_MEDIA);
+  if (media.length === 0 && extractionErrors[0]) {
+    throw extractionErrors[0];
+  }
+  return media;
 }
