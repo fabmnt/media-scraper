@@ -8,6 +8,9 @@ import {
 } from '@media-scraper/shared';
 import { MediaStorage } from '@media-scraper/storage';
 import { processCollection } from './process-collection.js';
+import { processMediaMaintenance } from './storage-retention.js';
+
+const MAINTENANCE_INTERVAL_MS = 30_000;
 
 const config = loadWorkerConfig();
 const database = createDatabase(config.DATABASE_URL);
@@ -25,12 +28,8 @@ const worker = new Worker<CollectionJobPayload>(
       isFinalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
       maxAssetBytes: config.MAX_ASSET_BYTES,
       maxCollectionBytes: config.MAX_COLLECTION_BYTES,
-      maxMediaStorageBytes: config.MAX_MEDIA_STORAGE_BYTES,
-      mediaRoot: config.MEDIA_ROOT,
       metadataConcurrency: config.METADATA_CONCURRENCY,
       optimizationTimeoutMs: config.OPTIMIZATION_TIMEOUT_MS,
-      retentionTargetPercent: config.MEDIA_RETENTION_TARGET_PERCENT,
-      retentionTriggerPercent: config.MEDIA_RETENTION_TRIGGER_PERCENT,
       signal: shutdownController.signal,
       storage,
       videoMaxDimension: config.VIDEO_MAX_DIMENSION,
@@ -38,8 +37,34 @@ const worker = new Worker<CollectionJobPayload>(
   { connection: redis, concurrency: 1 },
 );
 
+let maintenancePromise: Promise<void> | undefined;
+function runMaintenance() {
+  maintenancePromise ??= processMediaMaintenance(database.db, {
+    maxStorageBytes: config.MAX_MEDIA_STORAGE_BYTES,
+    signal: shutdownController.signal,
+    storage,
+    targetPercent: config.MEDIA_RETENTION_TARGET_PERCENT,
+    triggerPercent: config.MEDIA_RETENTION_TRIGGER_PERCENT,
+  }).finally(() => {
+    maintenancePromise = undefined;
+  });
+  return maintenancePromise;
+}
+const maintenanceInterval = setInterval(() => {
+  void runMaintenance().catch((error) =>
+    console.error('Media maintenance failed', error),
+  );
+}, MAINTENANCE_INTERVAL_MS);
+maintenanceInterval.unref();
+void runMaintenance().catch((error) =>
+  console.error('Initial media maintenance failed', error),
+);
+
 worker.on('completed', (job) => {
   console.info(`Collection ${job.data.collectionId} completed`);
+  void runMaintenance().catch((error) =>
+    console.error('Post-collection media maintenance failed', error),
+  );
 });
 worker.on('failed', (job, error) => {
   console.error(
@@ -54,10 +79,12 @@ worker.on('error', (error) => {
 let shutdownPromise: Promise<void> | undefined;
 function shutdown() {
   shutdownPromise ??= (async () => {
+    clearInterval(maintenanceInterval);
     shutdownController.abort();
     const failures: unknown[] = [];
     for (const close of [
       () => worker.close(),
+      () => maintenancePromise?.catch(() => undefined),
       () => redis.quit(),
       () => database.close(),
       () => storage.close(),

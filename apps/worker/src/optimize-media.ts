@@ -98,17 +98,12 @@ async function optimizeFile(
   file: ExtractedFile,
   options: OptimizationOptions,
 ): Promise<ExtractedFile> {
-  if (
-    file.type === 'image' &&
-    extname(file.absolutePath).toLowerCase() === '.gif'
-  ) {
-    return file;
-  }
-
   const [sourceProbe, sourceStat] = await Promise.all([
-    probeFile(file.absolutePath),
+    probeFile(file.absolutePath, file.type === 'image'),
     stat(file.absolutePath),
   ]);
+  if (file.type === 'image' && sourceProbe.frameCount !== 1) return file;
+
   const outputExtension = file.type === 'video' ? '.mp4' : '.webp';
   const outputPath = join(
     dirname(file.absolutePath),

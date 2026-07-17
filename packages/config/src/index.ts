@@ -9,6 +9,7 @@ const DEFAULT_MAX_COLLECTION_BYTES = 500 * 1024 * 1024;
 const DEFAULT_MAX_MEDIA_STORAGE_BYTES = 4 * 1024 * 1024 * 1024;
 const DEFAULT_OPTIMIZATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_PRESIGNED_URL_TTL_SECONDS = 15 * 60;
+const MAX_PRESIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
 const DEFAULT_RETENTION_TARGET_PERCENT = 70;
 const DEFAULT_RETENTION_TRIGGER_PERCENT = 80;
 const DEFAULT_VIDEO_MAX_DIMENSION = 1_280;
@@ -44,9 +45,9 @@ const storageEnvironmentFields = {
   S3_BUCKET: optionalEnvironmentString,
   S3_ENDPOINT: optionalEnvironmentUrl,
   S3_FORCE_PATH_STYLE: z.stringbool().default(false),
-  S3_PRESIGNED_URL_TTL_SECONDS: positiveInteger.default(
-    DEFAULT_PRESIGNED_URL_TTL_SECONDS,
-  ),
+  S3_PRESIGNED_URL_TTL_SECONDS: positiveInteger
+    .max(MAX_PRESIGNED_URL_TTL_SECONDS)
+    .default(DEFAULT_PRESIGNED_URL_TTL_SECONDS),
   S3_REGION: z.string().min(1).default('auto'),
   S3_SECRET_ACCESS_KEY: optionalEnvironmentString,
 };

@@ -1,14 +1,16 @@
+import { randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
-  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+const DELETE_CONCURRENCY = 4;
 
 export interface S3StorageOptions {
   accessKeyId: string;
@@ -65,7 +67,9 @@ export class MediaStorage {
     absolutePath: string,
     contentHash: string,
     mimeType: string,
+    signal?: AbortSignal,
   ): Promise<StoredAssetLocation> {
+    signal?.throwIfAborted();
     if (this.driver === 'local') {
       const relativePath = relative(this.mediaRoot, absolutePath);
       if (!this.localPath(relativePath)) {
@@ -77,31 +81,18 @@ export class MediaStorage {
       throw new Error('S3 storage is not configured');
     }
 
-    const storageKey = `media/${contentHash.slice(0, 2)}/${contentHash}`;
+    const storageKey = `media/${contentHash.slice(0, 2)}/${contentHash}-${randomUUID()}`;
     const fileStat = await stat(absolutePath);
-    let objectExists = false;
-    try {
-      const existing = await this.s3.send(
-        new HeadObjectCommand({ Bucket: this.bucket, Key: storageKey }),
-      );
-      objectExists = existing?.ContentLength === fileStat.size;
-    } catch (error) {
-      const statusCode = (error as { $metadata?: { httpStatusCode?: number } })
-        .$metadata?.httpStatusCode;
-      if (statusCode !== 404) throw error;
-    }
-
-    if (!objectExists) {
-      await this.s3.send(
-        new PutObjectCommand({
-          Body: createReadStream(absolutePath),
-          Bucket: this.bucket,
-          ContentLength: fileStat.size,
-          ContentType: mimeType,
-          Key: storageKey,
-        }),
-      );
-    }
+    await this.s3.send(
+      new PutObjectCommand({
+        Body: createReadStream(absolutePath),
+        Bucket: this.bucket,
+        ContentLength: fileStat.size,
+        ContentType: mimeType,
+        Key: storageKey,
+      }),
+      signal ? { abortSignal: signal } : undefined,
+    );
     return { relativePath: null, storageKey };
   }
 
@@ -125,14 +116,29 @@ export class MediaStorage {
     );
   }
 
-  async deleteObjects(storageKeys: readonly string[]) {
-    if (storageKeys.length === 0) return;
+  async deleteObjects(storageKeys: readonly string[], signal?: AbortSignal) {
+    const uniqueKeys = [...new Set(storageKeys)];
+    if (uniqueKeys.length === 0) return;
     const s3 = this.s3;
     const bucket = this.bucket;
     if (!s3 || !bucket) throw new Error('S3 storage is not configured');
+
+    let nextIndex = 0;
     await Promise.all(
-      [...new Set(storageKeys)].map((storageKey) =>
-        s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: storageKey })),
+      Array.from(
+        { length: Math.min(DELETE_CONCURRENCY, uniqueKeys.length) },
+        async () => {
+          while (nextIndex < uniqueKeys.length) {
+            signal?.throwIfAborted();
+            const storageKey = uniqueKeys[nextIndex];
+            nextIndex += 1;
+            if (!storageKey) continue;
+            await s3.send(
+              new DeleteObjectCommand({ Bucket: bucket, Key: storageKey }),
+              signal ? { abortSignal: signal } : undefined,
+            );
+          }
+        },
       ),
     );
   }

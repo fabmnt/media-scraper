@@ -84,7 +84,7 @@ pnpm dev
 
 Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resolved from the workspace root so the API and worker always share the same files. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
 
-Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Images except animated GIFs are converted to WebP with a maximum 1920px dimension. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
+Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Still images are converted to WebP with a maximum 1920px dimension; animated GIF, WebP, APNG, and other multi-frame images are preserved unchanged. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
 
 `MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). The worker processes one collection at a time so quota decisions cannot race each other. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
 
@@ -105,7 +105,7 @@ S3_FORCE_PATH_STYLE=false
 S3_PRESIGNED_URL_TTL_SECONDS=900
 ```
 
-Replace `media-bucket` with the bucket service name. Objects use content-addressed keys, so identical optimized files share one object. The API keeps media private and redirects authenticated content requests to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
+Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API keeps media private and redirects authenticated content requests to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
 
 After deploying and applying migrations, move existing local assets into the configured bucket with:
 
@@ -113,7 +113,7 @@ After deploying and applying migrations, move existing local assets into the con
 railway ssh --service backend pnpm --filter @media-scraper/worker storage:migrate
 ```
 
-The migration uploads each object before updating its database location and deleting the local copy. Keep the volume attached afterward because extraction and credentials still use it. Railway Buckets do not currently provide lifecycle rules, so application retention remains enabled.
+The migration uploads each object before atomically updating its database location and queuing the local copy for durable cleanup. Failed file/object cleanup and quota enforcement are retried by the worker's database-backed maintenance loop. Keep the volume attached afterward because extraction and credentials still use it. Railway Buckets do not currently provide lifecycle rules, so application retention remains enabled.
 
 ## Platform authentication
 

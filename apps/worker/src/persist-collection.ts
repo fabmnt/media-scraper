@@ -2,6 +2,8 @@ import { basename } from 'node:path';
 import { and, eq, inArray, ne, or } from 'drizzle-orm';
 import {
   collections,
+  enqueueAssetCleanup,
+  enqueueRetention,
   mediaAssets,
   mediaItems,
   type Database,
@@ -10,33 +12,18 @@ import type { CollectionJobPayload } from '@media-scraper/shared';
 import type { MediaStorage, StoredAssetLocation } from '@media-scraper/storage';
 import type { PreparedMedia } from './collection-files.js';
 
-export type ObsoleteAsset = StoredAssetLocation;
-
 export async function persistCollection(
   db: Database,
   job: CollectionJobPayload,
   preparedItems: PreparedMedia[],
   storage: MediaStorage,
   claimOwner: string,
+  signal: AbortSignal,
 ) {
   const storedLocations = new Map<string, StoredAssetLocation>();
   try {
-    for (const preparedItem of preparedItems) {
-      for (const file of preparedItem.files) {
-        storedLocations.set(
-          file.absolutePath,
-          await storage.store(
-            file.absolutePath,
-            file.metadata.contentHash,
-            file.metadata.mimeType,
-          ),
-        );
-      }
-    }
-
     return await db.transaction(async (transaction) => {
       const retainedPaths = new Set<string>();
-      const obsoleteAssets: ObsoleteAsset[] = [];
       for (const extractedItem of preparedItems) {
         const contentHashes = extractedItem.files.map(
           (file) => file.metadata.contentHash,
@@ -103,6 +90,18 @@ export async function persistCollection(
           .returning({ id: mediaItems.id });
         if (!item) throw new Error('Failed to save extracted media');
 
+        for (const file of extractedItem.files) {
+          storedLocations.set(
+            file.absolutePath,
+            await storage.store(
+              file.absolutePath,
+              file.metadata.contentHash,
+              file.metadata.mimeType,
+              signal,
+            ),
+          );
+        }
+
         const previousAssets = await transaction
           .select({
             relativePath: mediaAssets.relativePath,
@@ -131,8 +130,9 @@ export async function persistCollection(
             }),
           );
         }
-        obsoleteAssets.push(...previousAssets);
+        await enqueueAssetCleanup(transaction, previousAssets);
       }
+      await enqueueRetention(transaction);
       const [completedCollection] = await transaction
         .update(collections)
         .set({
@@ -150,30 +150,20 @@ export async function persistCollection(
         )
         .returning({ id: collections.id });
       if (!completedCollection) throw new Error('Collection claim was lost');
-      return { retainedPaths, obsoleteAssets };
+      return { retainedPaths };
     });
   } catch (error) {
-    const uploadedKeys = [...storedLocations.values()].flatMap((location) =>
-      location.storageKey ? [location.storageKey] : [],
+    const uploadedObjects = [...storedLocations.values()].filter(
+      (location) => location.storageKey,
     );
-    if (uploadedKeys.length > 0) {
-      try {
-        const referencedAssets = await db
-          .select({ storageKey: mediaAssets.storageKey })
-          .from(mediaAssets)
-          .where(inArray(mediaAssets.storageKey, uploadedKeys));
-        const referencedKeys = new Set(
-          referencedAssets.map((asset) => asset.storageKey),
-        );
-        await storage.deleteObjects(
-          uploadedKeys.filter((storageKey) => !referencedKeys.has(storageKey)),
-        );
-      } catch (cleanupError) {
-        throw new AggregateError(
-          [error, cleanupError],
-          'Could not persist media or clean uploaded objects',
-        );
-      }
+    if (uploadedObjects.length === 0) throw error;
+    try {
+      await enqueueAssetCleanup(db, uploadedObjects);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Could not persist media or queue uploaded object cleanup',
+      );
     }
     throw error;
   }

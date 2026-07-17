@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import {
   COLLECTION_STATUSES,
+  MEDIA_MAINTENANCE_TYPES,
   MEDIA_TYPES,
   SUPPORTED_PLATFORMS,
 } from '@media-scraper/shared';
@@ -24,6 +25,10 @@ export const collectionStatusEnum = pgEnum(
   COLLECTION_STATUSES,
 );
 export const mediaTypeEnum = pgEnum('media_type', MEDIA_TYPES);
+export const mediaMaintenanceTypeEnum = pgEnum(
+  'media_maintenance_type',
+  MEDIA_MAINTENANCE_TYPES,
+);
 
 export const collections = pgTable(
   'collections',
@@ -45,6 +50,34 @@ export const collections = pgTable(
   (table) => [
     index('collections_status_idx').on(table.status),
     index('collections_claim_expires_at_idx').on(table.claimExpiresAt),
+  ],
+);
+
+export const mediaMaintenanceTasks = pgTable(
+  'media_maintenance_tasks',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    type: mediaMaintenanceTypeEnum('type').notNull(),
+    target: text('target').notNull(),
+    availableAt: timestamp('available_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    attempts: integer('attempts').notNull().default(0),
+    version: integer('version').notNull().default(0),
+    lastError: text('last_error'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('media_maintenance_tasks_target_idx').on(
+      table.type,
+      table.target,
+    ),
+    index('media_maintenance_tasks_available_idx').on(table.availableAt),
   ],
 );
 
@@ -108,7 +141,8 @@ export const mediaAssets = pgTable(
       table.contentHash,
     ),
     index('media_assets_hash_idx').on(table.contentHash),
-    index('media_assets_storage_key_idx').on(table.storageKey),
+    uniqueIndex('media_assets_relative_path_idx').on(table.relativePath),
+    uniqueIndex('media_assets_storage_key_idx').on(table.storageKey),
     uniqueIndex('media_assets_item_position_idx').on(
       table.mediaItemId,
       table.position,

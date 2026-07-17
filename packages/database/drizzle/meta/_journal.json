@@ -36,6 +36,13 @@
       "when": 1784324281027,
       "tag": "0004_medical_sersi",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784327075022,
+      "tag": "0005_secret_wilson_fisk",
+      "breakpoints": true
     }
   ]
 }

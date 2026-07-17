@@ -12,10 +12,6 @@ import {
 import { prepareMedia, removeUntrackedFiles } from './collection-files.js';
 import { optimizeMedia } from './optimize-media.js';
 import { persistCollection } from './persist-collection.js';
-import {
-  enforceStorageRetention,
-  removeObsoleteAssets,
-} from './storage-retention.js';
 
 const MAX_ERROR_LENGTH = 4_000;
 const CLAIM_LEASE_MS = 60_000;
@@ -29,12 +25,8 @@ interface ProcessOptions {
   isFinalAttempt: boolean;
   maxAssetBytes: number;
   maxCollectionBytes: number;
-  maxMediaStorageBytes: number;
-  mediaRoot: string;
   metadataConcurrency: number;
   optimizationTimeoutMs: number;
-  retentionTargetPercent: number;
-  retentionTriggerPercent: number;
   signal: AbortSignal;
   storage: MediaStorage;
   videoMaxDimension: number;
@@ -50,18 +42,14 @@ export async function processCollection(
     isFinalAttempt,
     maxAssetBytes,
     maxCollectionBytes,
-    maxMediaStorageBytes,
-    mediaRoot,
     metadataConcurrency,
     optimizationTimeoutMs,
-    retentionTargetPercent,
-    retentionTriggerPercent,
     signal,
     storage,
     videoMaxDimension,
   }: ProcessOptions,
 ) {
-  const root = resolve(mediaRoot);
+  const root = storage.mediaRoot;
   const outputDirectory = resolve(
     root,
     'collections',
@@ -129,9 +117,6 @@ export async function processCollection(
   claimRenewal.unref();
 
   let retainedPaths = new Set<string>();
-  let obsoleteAssets: Awaited<
-    ReturnType<typeof persistCollection>
-  >['obsoleteAssets'] = [];
   try {
     await mkdir(outputDirectory, { recursive: true });
     const credentialPath = resolve(
@@ -173,12 +158,13 @@ export async function processCollection(
     });
     signal.throwIfAborted();
     await renewClaim();
-    ({ retainedPaths, obsoleteAssets } = await persistCollection(
+    ({ retainedPaths } = await persistCollection(
       db,
       job,
       preparedItems,
       storage,
       claimOwner,
+      signal,
     ));
   } catch (error) {
     const message = (
@@ -211,13 +197,4 @@ export async function processCollection(
   await removeUntrackedFiles(outputDirectory, root, retainedPaths).catch(
     (error) => console.warn('Could not clean extraction sidecars', error),
   );
-  await removeObsoleteAssets(db, storage, obsoleteAssets).catch((error) =>
-    console.warn('Could not remove obsolete media', error),
-  );
-  await enforceStorageRetention(db, {
-    maxStorageBytes: maxMediaStorageBytes,
-    storage,
-    targetPercent: retentionTargetPercent,
-    triggerPercent: retentionTriggerPercent,
-  }).catch((error) => console.warn('Could not enforce media retention', error));
 }

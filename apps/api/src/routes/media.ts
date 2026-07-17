@@ -1,10 +1,9 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, rmdir } from 'node:fs/promises';
-import { basename, dirname, resolve, sep } from 'node:path';
+import { basename } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { and, asc, desc, eq, ilike, inArray, or, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import {
+  enqueueAssetCleanup,
   mediaAssets,
   mediaItems,
   type Database,
@@ -34,18 +33,6 @@ const idParamsSchema = z.object({ id: z.uuid() });
 const assetParamsSchema = idParamsSchema.extend({
   action: z.enum(['content', 'download']),
 });
-
-async function removeEmptyParents(root: string, path: string) {
-  let directory = dirname(path);
-  while (directory.startsWith(`${root}${sep}`)) {
-    try {
-      await rmdir(directory);
-    } catch {
-      return;
-    }
-    directory = dirname(directory);
-  }
-}
 
 export async function mediaRoutes(
   app: FastifyInstance,
@@ -133,73 +120,26 @@ export async function mediaRoutes(
 
   app.delete('/:id', async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
-    const assets = await db
-      .select()
-      .from(mediaAssets)
-      .where(eq(mediaAssets.mediaItemId, id));
-    const [existing] = await db
-      .select({ id: mediaItems.id })
-      .from(mediaItems)
-      .where(eq(mediaItems.id, id));
-    if (!existing)
-      return reply.code(404).send({ message: 'Media item not found' });
+    const deleted = await db.transaction(async (transaction) => {
+      const [existing] = await transaction
+        .select({ id: mediaItems.id })
+        .from(mediaItems)
+        .where(eq(mediaItems.id, id));
+      if (!existing) return false;
 
-    const trashDirectory = resolve(root, '.trash', randomUUID());
-    await mkdir(trashDirectory, { recursive: true });
-    const stagedFiles: Array<{ original: string; staged: string }> = [];
-    try {
-      for (const [index, asset] of assets.entries()) {
-        if (!asset.relativePath) continue;
-        const original = storage.localPath(asset.relativePath);
-        if (!original) continue;
-        const staged = resolve(
-          trashDirectory,
-          `${String(index)}-${basename(original)}`,
-        );
-        try {
-          await rename(original, staged);
-          stagedFiles.push({ original, staged });
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-        }
-      }
-      await db.delete(mediaItems).where(eq(mediaItems.id, id));
-    } catch (error) {
-      await Promise.all(
-        stagedFiles.map(async ({ original, staged }) => {
-          await mkdir(dirname(original), { recursive: true });
-          await rename(staged, original);
-        }),
-      );
-      await rm(trashDirectory, { force: true, recursive: true });
-      throw error;
-    }
-
-    await rm(trashDirectory, { force: true, recursive: true }).catch((error) =>
-      request.log.warn(error, 'Could not remove staged media files'),
-    );
-    await Promise.all(
-      stagedFiles.map(({ original }) => removeEmptyParents(root, original)),
-    );
-    const storageKeys = assets.flatMap((asset) =>
-      asset.storageKey ? [asset.storageKey] : [],
-    );
-    if (storageKeys.length > 0) {
-      const remainingAssets = await db
-        .select({ storageKey: mediaAssets.storageKey })
+      const assets = await transaction
+        .select({
+          relativePath: mediaAssets.relativePath,
+          storageKey: mediaAssets.storageKey,
+        })
         .from(mediaAssets)
-        .where(inArray(mediaAssets.storageKey, storageKeys));
-      const referencedKeys = new Set(
-        remainingAssets.map((asset) => asset.storageKey),
-      );
-      await storage
-        .deleteObjects(
-          storageKeys.filter((storageKey) => !referencedKeys.has(storageKey)),
-        )
-        .catch((error) =>
-          request.log.warn(error, 'Could not remove stored media objects'),
-        );
-    }
-    return reply.code(204).send();
+        .where(eq(mediaAssets.mediaItemId, id));
+      await enqueueAssetCleanup(transaction, assets);
+      await transaction.delete(mediaItems).where(eq(mediaItems.id, id));
+      return true;
+    });
+    return deleted
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Media item not found' });
   });
 }
