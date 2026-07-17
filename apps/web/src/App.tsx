@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SUPPORTED_PLATFORMS } from '@media-scraper/shared';
 import { api } from './api';
 import { queryKeys } from './query-keys';
 import { AccessGate } from './components/AccessGate';
 import { CollectionForm } from './components/CollectionForm';
 import { Gallery } from './components/Gallery';
-import { InstagramCredentials } from './components/InstagramCredentials';
+import { PlatformCredentials } from './components/PlatformCredentials';
 import { JobsPanel } from './components/JobsPanel';
 
 export function App() {
@@ -52,7 +53,9 @@ export function App() {
             feeds.
           </p>
         </section>
-        <InstagramCredentials />
+        {SUPPORTED_PLATFORMS.map((platform) => (
+          <PlatformCredentials key={platform} platform={platform} />
+        ))}
         <CollectionForm />
         <JobsPanel />
         <Gallery />

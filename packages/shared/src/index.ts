@@ -9,7 +9,6 @@ export const COLLECTION_STATUSES = [
 ] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const COLLECTION_QUEUE_NAME = 'media-collections';
-export const INSTAGRAM_CREDENTIAL_FILE_NAME = 'instagram.cookies.txt';
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 100;
@@ -21,6 +20,30 @@ export const mediaTypeSchema = z.enum(MEDIA_TYPES);
 export type Platform = z.infer<typeof platformSchema>;
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
+
+interface PlatformCredentialConfig {
+  domain: string;
+  fileName: string;
+  requiredCookies: readonly string[];
+}
+
+export const PLATFORM_CREDENTIALS = {
+  instagram: {
+    domain: 'instagram.com',
+    fileName: 'instagram.cookies.txt',
+    requiredCookies: ['sessionid'],
+  },
+  facebook: {
+    domain: 'facebook.com',
+    fileName: 'facebook.cookies.txt',
+    requiredCookies: ['c_user', 'xs'],
+  },
+  tiktok: {
+    domain: 'tiktok.com',
+    fileName: 'tiktok.cookies.txt',
+    requiredCookies: ['sid_tt'],
+  },
+} as const satisfies Record<Platform, PlatformCredentialConfig>;
 
 const SUPPORTED_URL_PROTOCOLS = new Set(['http:', 'https:']);
 const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
@@ -98,7 +121,7 @@ export const collectionSchema = z.object({
 
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 export type MediaItem = z.infer<typeof mediaItemSchema>;
-export const instagramCredentialInputSchema = z.object({
+export const credentialInputSchema = z.object({
   cookies: z
     .string()
     .trim()
@@ -110,9 +133,7 @@ export const credentialStatusSchema = z.object({
   configured: z.boolean(),
 });
 
-export type InstagramCredentialInput = z.infer<
-  typeof instagramCredentialInputSchema
->;
+export type CredentialInput = z.infer<typeof credentialInputSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type Collection = z.infer<typeof collectionSchema>;
 

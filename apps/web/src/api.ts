@@ -57,16 +57,16 @@ export const api = {
       body: JSON.stringify({ token }),
     }),
   logout: () => request<void>('/auth/session', { method: 'DELETE' }),
-  getInstagramCredential: () =>
-    request<CredentialStatus>('/credentials/instagram'),
-  saveInstagramCredential: (cookies: string) =>
-    request<CredentialStatus>('/credentials/instagram', {
+  getCredential: (platform: Platform) =>
+    request<CredentialStatus>(`/credentials/${platform}`),
+  saveCredential: (platform: Platform, cookies: string) =>
+    request<CredentialStatus>(`/credentials/${platform}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ cookies }),
     }),
-  deleteInstagramCredential: () =>
-    request<void>('/credentials/instagram', { method: 'DELETE' }),
+  deleteCredential: (platform: Platform) =>
+    request<void>(`/credentials/${platform}`, { method: 'DELETE' }),
   createCollection: (input: CreateCollectionInput) =>
     request<Collection>('/collections', {
       method: 'POST',

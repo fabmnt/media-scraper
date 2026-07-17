@@ -1,27 +1,42 @@
 import type { FastifyInstance } from 'fastify';
-import { instagramCredentialInputSchema } from '@media-scraper/shared';
+import { credentialInputSchema, platformSchema } from '@media-scraper/shared';
 import {
-  deleteInstagramCredential,
-  hasInstagramCredential,
-  saveInstagramCredential,
-} from '../instagram-cookies.js';
+  deletePlatformCredential,
+  hasPlatformCredential,
+  savePlatformCredential,
+} from '../platform-cookies.js';
+
+interface CredentialRouteParams {
+  platform: string;
+}
 
 export async function credentialRoutes(
   app: FastifyInstance,
   { credentialsRoot }: { credentialsRoot: string },
 ) {
-  app.get('/instagram', async () => ({
-    configured: await hasInstagramCredential(credentialsRoot),
-  }));
-
-  app.put('/instagram', async (request, reply) => {
-    const { cookies } = instagramCredentialInputSchema.parse(request.body);
-    await saveInstagramCredential(credentialsRoot, cookies);
-    return reply.send({ configured: true });
+  app.get<{ Params: CredentialRouteParams }>('/:platform', async (request) => {
+    const platform = platformSchema.parse(request.params.platform);
+    return {
+      configured: await hasPlatformCredential(credentialsRoot, platform),
+    };
   });
 
-  app.delete('/instagram', async (_request, reply) => {
-    await deleteInstagramCredential(credentialsRoot);
-    return reply.code(204).send();
-  });
+  app.put<{ Params: CredentialRouteParams }>(
+    '/:platform',
+    async (request, reply) => {
+      const platform = platformSchema.parse(request.params.platform);
+      const { cookies } = credentialInputSchema.parse(request.body);
+      await savePlatformCredential(credentialsRoot, platform, cookies);
+      return reply.send({ configured: true });
+    },
+  );
+
+  app.delete<{ Params: CredentialRouteParams }>(
+    '/:platform',
+    async (request, reply) => {
+      const platform = platformSchema.parse(request.params.platform);
+      await deletePlatformCredential(credentialsRoot, platform);
+      return reply.code(204).send();
+    },
+  );
 }
