@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
+import { VideoFrameCapture } from './VideoFrameCapture';
 
 export function MediaPreview({
   initialItemId,
@@ -130,9 +131,8 @@ export function MediaPreview({
               src={api.mediaUrl(asset.url)}
             />
           ) : asset ? (
-            <video
-              controls
-              autoPlay
+            <VideoFrameCapture
+              fileName={asset.fileName}
               key={asset.id}
               src={api.mediaUrl(asset.url)}
             />
