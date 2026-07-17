@@ -62,7 +62,7 @@ docker compose up --build
 
 The one-shot `migrate` service applies committed database migrations before the API and worker start.
 
-Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only, same-site session cookie; set `COOKIE_SECURE=true` when serving it over HTTPS.
+Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only session cookie. Set `COOKIE_SECURE=true` when serving it over HTTPS; this also enables the `SameSite=None` attribute required when the web and API use separate sites.
 
 ## Local development
 

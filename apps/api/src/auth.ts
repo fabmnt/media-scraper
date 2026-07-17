@@ -37,7 +37,7 @@ function cookieValue(token: string, secure: boolean, maxAge: number) {
   return [
     `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
     'HttpOnly',
-    'SameSite=Strict',
+    `SameSite=${secure ? 'None' : 'Lax'}`,
     'Path=/',
     `Max-Age=${maxAge}`,
     secure ? 'Secure' : undefined,
