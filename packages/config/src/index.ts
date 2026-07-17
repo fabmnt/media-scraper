@@ -1,9 +1,24 @@
 import { existsSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 
-const ENV_FILE_PATH = '.env';
-if (existsSync(ENV_FILE_PATH)) process.loadEnvFile(ENV_FILE_PATH);
+const WORKSPACE_MARKER = 'pnpm-workspace.yaml';
 
+function findWorkspaceRoot(startDirectory: string) {
+  let directory = resolve(startDirectory);
+  while (true) {
+    if (existsSync(join(directory, WORKSPACE_MARKER))) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) return resolve(startDirectory);
+    directory = parent;
+  }
+}
+
+const workspaceRoot = findWorkspaceRoot(process.cwd());
+const environmentPath = join(workspaceRoot, '.env');
+if (existsSync(environmentPath)) process.loadEnvFile(environmentPath);
+
+const positiveInteger = z.coerce.number().int().positive();
 const commonEnvironmentSchema = z.object({
   DATABASE_URL: z
     .url()
@@ -16,15 +31,35 @@ const commonEnvironmentSchema = z.object({
 });
 
 const apiEnvironmentSchema = commonEnvironmentSchema.extend({
+  API_ACCESS_TOKEN: z.string().min(32),
   API_HOST: z.string().min(1).default('0.0.0.0'),
-  API_PORT: z.coerce.number().int().positive().default(3000),
+  API_PORT: positiveInteger.default(3000),
+  COOKIE_SECURE: z.stringbool().default(false),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
 });
 
 const workerEnvironmentSchema = commonEnvironmentSchema.extend({
-  MAX_ASSET_BYTES: z.coerce.number().int().positive().default(2_147_483_648),
+  EXTRACTION_TIMEOUT_MS: positiveInteger.default(1_800_000),
+  MAX_ASSET_BYTES: positiveInteger.default(2_147_483_648),
+  MAX_COLLECTION_BYTES: positiveInteger.default(10_737_418_240),
+  METADATA_CONCURRENCY: positiveInteger.default(4),
 });
 
-export const loadApiConfig = () => apiEnvironmentSchema.parse(process.env);
+function resolveCommonPaths<
+  T extends { CREDENTIALS_ROOT: string; MEDIA_ROOT: string },
+>(config: T): T {
+  return {
+    ...config,
+    CREDENTIALS_ROOT: isAbsolute(config.CREDENTIALS_ROOT)
+      ? config.CREDENTIALS_ROOT
+      : resolve(workspaceRoot, config.CREDENTIALS_ROOT),
+    MEDIA_ROOT: isAbsolute(config.MEDIA_ROOT)
+      ? config.MEDIA_ROOT
+      : resolve(workspaceRoot, config.MEDIA_ROOT),
+  };
+}
+
+export const loadApiConfig = () =>
+  resolveCommonPaths(apiEnvironmentSchema.parse(process.env));
 export const loadWorkerConfig = () =>
-  workerEnvironmentSchema.parse(process.env);
+  resolveCommonPaths(workerEnvironmentSchema.parse(process.env));

@@ -11,6 +11,8 @@ export const MEDIA_TYPES = ['image', 'video'] as const;
 export const COLLECTION_QUEUE_NAME = 'media-collections';
 export const INSTAGRAM_CREDENTIAL_FILE_NAME = 'instagram.cookies.txt';
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
+export const DEFAULT_PAGE_SIZE = 24;
+export const MAX_PAGE_SIZE = 100;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
@@ -113,3 +115,8 @@ export type InstagramCredentialInput = z.infer<
 >;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type Collection = z.infer<typeof collectionSchema>;
+
+export interface Page<T> {
+  items: T[];
+  nextOffset: number | null;
+}

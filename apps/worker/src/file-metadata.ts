@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import { lookup } from 'mime-types';
 
+const PROBE_TIMEOUT_MS = 30_000;
+
 interface ProbeOutput {
   streams?: Array<{
     width?: number;
@@ -25,12 +27,15 @@ function probe(path: string): Promise<ProbeOutput> {
       path,
     ]);
     let output = '';
+    const timeout = setTimeout(() => child.kill('SIGTERM'), PROBE_TIMEOUT_MS);
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
       output += chunk;
     });
+    child.stderr.resume();
     child.on('error', () => resolve({}));
     child.on('close', (code) => {
+      clearTimeout(timeout);
       if (code !== 0) {
         resolve({});
         return;
@@ -64,6 +69,7 @@ export async function readFileMetadata(path: string) {
     (entry) => entry.width !== undefined || entry.height !== undefined,
   );
   const rawDuration = stream?.duration ?? probeOutput.format?.duration;
+  const parsedDuration = rawDuration ? Number(rawDuration) : undefined;
 
   return {
     sizeBytes: fileStat.size,
@@ -71,6 +77,11 @@ export async function readFileMetadata(path: string) {
     mimeType: lookup(path) || 'application/octet-stream',
     width: stream?.width ?? null,
     height: stream?.height ?? null,
-    durationSeconds: rawDuration ? Number(rawDuration) : null,
+    durationSeconds:
+      parsedDuration !== undefined &&
+      Number.isFinite(parsedDuration) &&
+      parsedDuration >= 0
+        ? parsedDuration
+        : null,
   };
 }

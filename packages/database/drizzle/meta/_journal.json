@@ -8,6 +8,27 @@
       "when": 1784237844414,
       "tag": "0000_abandoned_sunspot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784242291626,
+      "tag": "0001_tiny_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784243401514,
+      "tag": "0002_wise_skaar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784248815647,
+      "tag": "0003_regular_korg",
+      "breakpoints": true
     }
   ]
 }

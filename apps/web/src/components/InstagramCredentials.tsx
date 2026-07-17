@@ -1,11 +1,14 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MAX_CREDENTIAL_LENGTH } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
 export function InstagramCredentials() {
   const [cookies, setCookies] = useState('');
+  const [fileError, setFileError] = useState<string>();
   const fileInput = useRef<HTMLInputElement>(null);
+  const fileSelection = useRef(0);
   const queryClient = useQueryClient();
   const status = useQuery({
     queryKey: queryKeys.instagramCredential,
@@ -32,7 +35,23 @@ export function InstagramCredentials() {
 
   async function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (file) setCookies(await file.text());
+    if (!file) return;
+    const selection = fileSelection.current + 1;
+    fileSelection.current = selection;
+    setFileError(undefined);
+    setCookies('');
+    if (file.size > MAX_CREDENTIAL_LENGTH) {
+      setFileError('Cookie file is too large');
+      return;
+    }
+    try {
+      const content = await file.text();
+      if (fileSelection.current === selection) setCookies(content);
+    } catch {
+      if (fileSelection.current === selection) {
+        setFileError('Cookie file could not be read');
+      }
+    }
   }
 
   return (
@@ -45,7 +64,13 @@ export function InstagramCredentials() {
         <span
           className={`credential-state ${status.data?.configured ? 'configured' : ''}`}
         >
-          {status.data?.configured ? 'Configured' : 'Not configured'}
+          {status.isLoading
+            ? 'Checking…'
+            : status.error
+              ? 'Unavailable'
+              : status.data?.configured
+                ? 'Configured'
+                : 'Not configured'}
         </span>
       </summary>
       <div className="credentials-body">
@@ -73,7 +98,7 @@ export function InstagramCredentials() {
             />
           </label>
           <button
-            disabled={!cookies.trim() || save.isPending}
+            disabled={!cookies.trim() || save.isPending || remove.isPending}
             onClick={() => save.mutate(cookies)}
             type="button"
           >
@@ -82,7 +107,7 @@ export function InstagramCredentials() {
           {status.data?.configured && (
             <button
               className="danger-button"
-              disabled={remove.isPending}
+              disabled={remove.isPending || save.isPending}
               onClick={() => {
                 if (window.confirm('Remove the stored Instagram credential?')) {
                   remove.mutate();
@@ -94,8 +119,10 @@ export function InstagramCredentials() {
             </button>
           )}
         </div>
-        {(save.error || remove.error) && (
-          <p className="error">{(save.error ?? remove.error)?.message}</p>
+        {(status.error || save.error || remove.error || fileError) && (
+          <p className="error">
+            {fileError ?? (status.error ?? save.error ?? remove.error)?.message}
+          </p>
         )}
         <small>
           Treat session cookies like a password. Logging out of Instagram or

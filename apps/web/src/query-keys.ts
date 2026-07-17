@@ -1,7 +1,12 @@
 const ALL_MEDIA_QUERY_KEY = ['media'] as const;
 
 export const queryKeys = {
+  session: ['session'] as const,
   collections: ['collections'] as const,
+  recentCollections: ['collections', 'recent'] as const,
+  failedCollections: ['collections', 'failed'] as const,
+  activeCollections: (status: 'queued' | 'processing') =>
+    ['collections', 'active', status] as const,
   instagramCredential: ['credentials', 'instagram'] as const,
   allMedia: ALL_MEDIA_QUERY_KEY,
   media: (platform?: string, search?: string) =>

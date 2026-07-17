@@ -104,11 +104,15 @@ export async function saveInstagramCredential(
   const path = instagramCredentialPath(credentialsRoot);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporaryPath = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temporaryPath, normalizeInstagramCookies(cookies), {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
-  await rename(temporaryPath, path);
+  try {
+    await writeFile(temporaryPath, normalizeInstagramCookies(cookies), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    await rename(temporaryPath, path);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
 }
 
 export async function deleteInstagramCredential(credentialsRoot: string) {

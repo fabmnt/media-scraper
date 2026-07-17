@@ -43,6 +43,8 @@ services:
     environment:
       DATABASE_URL: postgresql://media_scraper:media_scraper@postgres:5432/media_scraper
       REDIS_URL: redis://redis:6379
+      API_ACCESS_TOKEN: ${API_ACCESS_TOKEN}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MEDIA_ROOT: /data/media
       CREDENTIALS_ROOT: /data/credentials
       WEB_ORIGIN: http://localhost:5173
@@ -64,7 +66,10 @@ services:
       REDIS_URL: redis://redis:6379
       MEDIA_ROOT: /data/media
       CREDENTIALS_ROOT: /data/credentials
-      MAX_ASSET_BYTES: 2147483648
+      MAX_ASSET_BYTES: ${MAX_ASSET_BYTES:-2147483648}
+      MAX_COLLECTION_BYTES: ${MAX_COLLECTION_BYTES:-10737418240}
+      EXTRACTION_TIMEOUT_MS: ${EXTRACTION_TIMEOUT_MS:-1800000}
+      METADATA_CONCURRENCY: ${METADATA_CONCURRENCY:-4}
     volumes:
       - media-data:/data/media
       - credential-data:/data/credentials:ro

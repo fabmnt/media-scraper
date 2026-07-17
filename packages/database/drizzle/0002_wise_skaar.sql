@@ -1,0 +1,2 @@
+CREATE INDEX "media_items_caption_trgm_idx" ON "media_items" USING gin ("caption" gin_trgm_ops);--> statement-breakpoint
+CREATE INDEX "media_items_author_name_trgm_idx" ON "media_items" USING gin ("author_name" gin_trgm_ops);
