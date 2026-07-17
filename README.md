@@ -46,7 +46,7 @@ CREDENTIALS_ROOT=/data/credentials
 
 Set the backend service's pre-deploy command to `pnpm db:migrate`, healthcheck path to `/health`, attach a Railway volume mounted at `/data`, and generate its public domain. Do not scale this volume-backed service horizontally.
 
-On the `web` service, set `VITE_API_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}`, set `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`, and generate a public domain. Because Vite embeds this URL at build time, the backend domain must exist before the web service is built. Finally, change the backend's `WEB_ORIGIN` to `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` and redeploy it. Railway provides `PORT` automatically; the API and web preview are configured to listen on it.
+On the `web` service, set `API_PROXY_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}`, set `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`, and generate a public domain. The web service uses that backend URL as its server-side proxy target while browser requests stay on the web origin, allowing session cookies to remain first-party. Finally, change the backend's `WEB_ORIGIN` to `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` and redeploy it. Railway provides `PORT` automatically; the API and web preview are configured to listen on it.
 
 Railway's private networking supplies the database and Redis connections through the reference variables. The `/data` volume is required: without it, downloaded media and stored platform credentials are lost when the backend redeploys.
 
@@ -62,7 +62,7 @@ docker compose up --build
 
 The one-shot `migrate` service applies committed database migrations before the API and worker start.
 
-Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only session cookie. Set `COOKIE_SECURE=true` when serving it over HTTPS; this also enables the `SameSite=None` attribute required when the web and API use separate sites.
+Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only session cookie. Set `COOKIE_SECURE=true` when serving it over HTTPS. The web service proxies `/api` requests so the cookie remains first-party even though the API runs as a separate service.
 
 ## Local development
 

@@ -19,8 +19,8 @@ RUN --mount=type=cache,id=s/6c4c77ca-5611-4b2c-8dd7-c6e6a0d9ceea-/pnpm/store,tar
   pnpm install --frozen-lockfile
 
 COPY . .
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL
+ARG API_PROXY_URL
+ENV API_PROXY_URL=$API_PROXY_URL
 RUN pnpm --filter @media-scraper/web build
 
 CMD ["bash", "-c", "pnpm --filter @media-scraper/web preview --host 0.0.0.0 --port ${PORT:-4173}"]

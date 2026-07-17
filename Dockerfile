@@ -29,8 +29,8 @@ RUN pnpm --filter @media-scraper/api build
 CMD ["pnpm", "--filter", "@media-scraper/api", "start"]
 
 FROM application AS web
-ARG VITE_API_URL=http://localhost:3000
-ENV VITE_API_URL=$VITE_API_URL
+ARG API_PROXY_URL=http://localhost:3000
+ENV API_PROXY_URL=$API_PROXY_URL
 RUN pnpm --filter @media-scraper/web build
 CMD ["pnpm", "--filter", "@media-scraper/web", "preview", "--host", "0.0.0.0"]
 

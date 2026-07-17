@@ -82,7 +82,7 @@ services:
       context: .
       target: web
       args:
-        VITE_API_URL: http://localhost:3000
+        API_PROXY_URL: http://api:3000
     ports:
       - '127.0.0.1:${WEB_PORT:-5173}:4173'
     depends_on:
