@@ -2,7 +2,9 @@ import { useRef, useState } from 'react';
 
 const FRAME_IMAGE_MIME_TYPE = 'image/jpeg';
 const FRAME_IMAGE_QUALITY = 0.92;
-const FRAME_SEEK_STEP_SECONDS = 0.01;
+const FRAME_SEEK_STEP_SECONDS = 0.1;
+const SEEK_TIMEOUT_MS = 10_000;
+const URL_REVOKE_DELAY_MS = 0;
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
 
@@ -34,8 +36,26 @@ function getFrameFileName(fileName: string, seconds: number) {
 
 function waitForSeek(video: HTMLVideoElement) {
   if (!video.seeking) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    video.addEventListener('seeked', () => resolve(), { once: true });
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('error', handleFailure);
+      video.removeEventListener('abort', handleFailure);
+    };
+    const handleSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const handleFailure = () => {
+      cleanup();
+      reject(new Error('The video could not seek to the selected moment.'));
+    };
+    const timeout = window.setTimeout(handleFailure, SEEK_TIMEOUT_MS);
+
+    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleFailure);
+    video.addEventListener('abort', handleFailure);
   });
 }
 
@@ -71,7 +91,10 @@ function downloadBlob(blob: Blob, fileName: string) {
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(downloadUrl);
+  window.setTimeout(
+    () => URL.revokeObjectURL(downloadUrl),
+    URL_REVOKE_DELAY_MS,
+  );
 }
 
 export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
@@ -101,18 +124,31 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
       return;
     }
 
+    const wasPlaying = !video.paused;
+    video.pause();
+    video.controls = false;
+    const selectedTime = video.currentTime;
     setIsDownloading(true);
     setError(undefined);
     try {
       await waitForSeek(video);
+      if (video.currentTime !== selectedTime) {
+        throw new Error('The selected moment changed. Try downloading again.');
+      }
       if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
         throw new Error('The video frame is not ready.');
       }
       const blob = await captureFrame(video);
-      downloadBlob(blob, getFrameFileName(fileName, video.currentTime));
-    } catch {
-      setError('The video frame could not be downloaded.');
+      downloadBlob(blob, getFrameFileName(fileName, selectedTime));
+    } catch (captureError) {
+      setError(
+        captureError instanceof Error
+          ? captureError.message
+          : 'The video frame could not be downloaded.',
+      );
     } finally {
+      video.controls = true;
+      if (wasPlaying) void video.play().catch(() => undefined);
       setIsDownloading(false);
     }
   }
@@ -143,7 +179,7 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
         </div>
         <input
           aria-label="Choose video moment"
-          disabled={!duration}
+          disabled={!duration || isDownloading}
           id="video-frame-position"
           max={duration}
           min="0"

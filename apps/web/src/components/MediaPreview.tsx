@@ -67,9 +67,11 @@ export function MediaPreview({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
       if (
-        event.target instanceof HTMLVideoElement &&
-        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
+        target instanceof HTMLElement &&
+        target.matches('video, input, select, textarea, button, a[href]')
       ) {
         return;
       }
