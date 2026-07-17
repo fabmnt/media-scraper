@@ -70,8 +70,8 @@ export function MediaPreview({
       const target = event.target;
       if (
         (event.key === 'ArrowLeft' || event.key === 'ArrowRight') &&
-        target instanceof HTMLElement &&
-        target.matches('video, input, select, textarea, button, a[href]')
+        target instanceof Element &&
+        target.closest('video, input, select, textarea, button, a[href]')
       ) {
         return;
       }
