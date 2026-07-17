@@ -11,7 +11,14 @@ import { z } from 'zod';
 
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 90_000;
+const PROFILE_RESOLUTION_TIMEOUT_MS = 30_000;
 const MAX_DISCOVERY_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_PROFILE_PAGE_BYTES = 2 * 1024 * 1024;
+const INSTAGRAM_PROFILE_ID_PATTERNS = [
+  /"profile_id":"(\d+)"/,
+  /"page_id":"profilePage_(\d+)"/,
+  /"id":"(\d+)","show_suggested_profiles"/,
+] as const;
 const GALLERY_DIRECTORY_MESSAGE = 2;
 const GALLERY_URL_MESSAGE = 3;
 const GALLERY_ERROR_MESSAGE = -1;
@@ -74,14 +81,43 @@ const galleryMessageSchema = z.union([
 const galleryOutputSchema = z.array(galleryMessageSchema);
 type GalleryMetadata = z.infer<typeof galleryMetadataSchema>;
 
-function profileUrls(platform: Platform, username: string) {
+async function instagramProfileId(username: string) {
+  const response = await fetch(
+    `https://www.instagram.com/${encodeURIComponent(username)}/`,
+    {
+      headers: { 'user-agent': 'media-scraper/0.1' },
+      signal: AbortSignal.timeout(PROFILE_RESOLUTION_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Instagram profile returned HTTP ${String(response.status)}`,
+    );
+  }
+
+  const html = await response.text();
+  if (Buffer.byteLength(html) > MAX_PROFILE_PAGE_BYTES) {
+    throw new Error('Instagram profile page exceeded the size limit');
+  }
+  for (const pattern of INSTAGRAM_PROFILE_ID_PATTERNS) {
+    const profileId = pattern.exec(html)?.[1];
+    if (profileId) return profileId;
+  }
+  throw new Error('Instagram profile ID was not found');
+}
+
+async function profileUrls(platform: Platform, username: string) {
   const encodedUsername = encodeURIComponent(username);
   switch (platform) {
-    case 'instagram':
+    case 'instagram': {
+      const profileIdentifier = await instagramProfileId(username)
+        .then((profileId) => `id:${profileId}`)
+        .catch(() => encodedUsername);
       return [
-        `https://www.instagram.com/${encodedUsername}/posts/`,
-        `https://www.instagram.com/${encodedUsername}/reels/`,
+        `https://www.instagram.com/${profileIdentifier}/posts/`,
+        `https://www.instagram.com/${profileIdentifier}/reels/`,
       ];
+    }
     case 'facebook':
       return [`https://www.facebook.com/${encodedUsername}/photos`];
     case 'tiktok':
@@ -227,7 +263,7 @@ export async function discoverProfileMedia(
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
   const messages: z.infer<typeof galleryOutputSchema> = [];
   const extractionErrors: Error[] = [];
-  for (const url of profileUrls(platform, username)) {
+  for (const url of await profileUrls(platform, username)) {
     try {
       const sourceMessages = await extractProfileSource(
         url,
