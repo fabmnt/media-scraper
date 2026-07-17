@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 
@@ -55,6 +55,19 @@ interface YtDlpMetadata {
   description?: string;
   title?: string;
   timestamp?: number;
+}
+
+interface GalleryDlMetadata {
+  id?: string | number;
+  post_id?: string | number;
+  shortcode?: string;
+  username?: string;
+  fullname?: string;
+  description?: string;
+  caption?: string;
+  title?: string;
+  date?: string | number;
+  timestamp?: string | number;
 }
 
 interface CommandResult {
@@ -304,6 +317,29 @@ async function extractWithYtDlp(
   });
 }
 
+async function readGalleryDlMetadata(
+  outputDirectory: string,
+): Promise<GalleryDlMetadata[]> {
+  const entries = await readdir(outputDirectory, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  const metadata: GalleryDlMetadata[] = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+    try {
+      const contents = await readFile(
+        join(entry.parentPath, entry.name),
+        'utf8',
+      );
+      metadata.push(JSON.parse(contents) as GalleryDlMetadata);
+    } catch {
+      // A malformed sidecar should not discard successfully downloaded media.
+    }
+  }
+  return metadata;
+}
+
 async function extractWithGalleryDl(
   url: string,
   outputDirectory: string,
@@ -314,7 +350,13 @@ async function extractWithGalleryDl(
     : [];
   await runCommand(
     'gallery-dl',
-    [...authenticationArguments, '--destination', outputDirectory, url],
+    [
+      ...authenticationArguments,
+      '--write-metadata',
+      '--destination',
+      outputDirectory,
+      url,
+    ],
     outputDirectory,
     options,
   );
@@ -323,13 +365,39 @@ async function extractWithGalleryDl(
     throw new Error('gallery-dl did not produce any media files');
   }
 
+  const metadata = await readGalleryDlMetadata(outputDirectory);
+  const sourceIdentifier = metadata.find(
+    (item) => item.shortcode ?? item.post_id ?? item.id,
+  );
+  const author = metadata.find((item) => item.username ?? item.fullname);
+  const text = metadata.find(
+    (item) => item.description ?? item.caption ?? item.title,
+  );
+  const publication = metadata.find((item) => item.date ?? item.timestamp);
+  const publicationValue = publication?.date ?? publication?.timestamp;
+  const publishedAt = publicationValue
+    ? new Date(
+        typeof publicationValue === 'number'
+          ? publicationValue * 1_000
+          : publicationValue,
+      )
+    : null;
+
   return [
     {
-      sourceId: sourceIdForUrl(url),
+      sourceId: String(
+        sourceIdentifier?.shortcode ??
+          sourceIdentifier?.post_id ??
+          sourceIdentifier?.id ??
+          sourceIdForUrl(url),
+      ),
       sourceUrl: url,
-      authorName: null,
-      caption: null,
-      publishedAt: null,
+      authorName: author?.username ?? author?.fullname ?? null,
+      caption: text?.description ?? text?.caption ?? text?.title ?? null,
+      publishedAt:
+        publishedAt && !Number.isNaN(publishedAt.getTime())
+          ? publishedAt
+          : null,
       files,
     },
   ];
