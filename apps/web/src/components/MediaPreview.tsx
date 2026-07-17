@@ -1,0 +1,156 @@
+import { useEffect, useState } from 'react';
+import type { MediaItem } from '@media-scraper/shared';
+import { api } from '../api';
+
+export function MediaPreview({
+  initialItemId,
+  items,
+  onClose,
+}: {
+  initialItemId: string;
+  items: MediaItem[];
+  onClose: () => void;
+}) {
+  const initialItemIndex = Math.max(
+    items.findIndex((item) => item.id === initialItemId),
+    0,
+  );
+  const [itemIndex, setItemIndex] = useState(initialItemIndex);
+  const [assetIndex, setAssetIndex] = useState(0);
+  const item = items[itemIndex];
+  const asset = item?.assets[assetIndex];
+  const canGoPrevious = itemIndex > 0 || assetIndex > 0;
+  const canGoNext = item
+    ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1
+    : false;
+
+  function showPrevious() {
+    if (!item || !canGoPrevious) return;
+    if (assetIndex > 0) {
+      setAssetIndex((current) => current - 1);
+      return;
+    }
+    const previousItemIndex = itemIndex - 1;
+    const previousAssetCount = items[previousItemIndex]?.assets.length ?? 0;
+    setItemIndex(previousItemIndex);
+    setAssetIndex(Math.max(previousAssetCount - 1, 0));
+  }
+
+  function showNext() {
+    if (!item || !canGoNext) return;
+    if (assetIndex < item.assets.length - 1) {
+      setAssetIndex((current) => current + 1);
+      return;
+    }
+    setItemIndex((current) => current + 1);
+    setAssetIndex(0);
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        showPrevious();
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        showNext();
+      } else if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  });
+
+  if (!item) return null;
+
+  return (
+    <div
+      aria-label="Media preview"
+      aria-modal="true"
+      className="media-preview-modal"
+      onClick={onClose}
+      role="dialog"
+    >
+      <div
+        className="media-preview-dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="media-preview-header">
+          <div>
+            <span className="eyebrow">{item.platform}</span>
+            <strong>{item.authorName ?? 'Unknown creator'}</strong>
+          </div>
+          <span className="preview-position">
+            {itemIndex + 1} / {items.length}
+            {item.assets.length > 1 &&
+              ` · FILE ${assetIndex + 1} / ${item.assets.length}`}
+          </span>
+          <button
+            aria-label="Close preview"
+            className="preview-close"
+            onClick={onClose}
+            type="button"
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="media-preview-stage">
+          {asset?.type === 'image' ? (
+            <img
+              alt={item.caption ?? `${item.platform} media`}
+              src={api.mediaUrl(asset.url)}
+            />
+          ) : asset ? (
+            <video
+              controls
+              autoPlay
+              key={asset.id}
+              src={api.mediaUrl(asset.url)}
+            />
+          ) : (
+            <p className="empty-state">No media file available.</p>
+          )}
+          <button
+            aria-label="Previous media file"
+            className="preview-navigation preview-navigation-previous"
+            disabled={!canGoPrevious}
+            onClick={showPrevious}
+            type="button"
+          >
+            ←
+          </button>
+          <button
+            aria-label="Next media file"
+            className="preview-navigation preview-navigation-next"
+            disabled={!canGoNext}
+            onClick={showNext}
+            type="button"
+          >
+            →
+          </button>
+        </div>
+
+        <div className="media-preview-footer">
+          <p>{item.caption ?? 'No caption available'}</p>
+          <div>
+            <a href={item.sourceUrl} rel="noreferrer" target="_blank">
+              View source ↗
+            </a>
+            {asset && (
+              <a download href={api.downloadUrl(asset.id)}>
+                Download file
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
