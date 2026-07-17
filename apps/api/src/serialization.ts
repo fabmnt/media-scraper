@@ -23,7 +23,7 @@ export function serializeMediaItem(
     type: asset.type,
     fileName: asset.fileName,
     mimeType: asset.mimeType,
-    url: `/media/${asset.relativePath.split('\\').join('/')}`,
+    url: `/media-items/${asset.id}/content`,
     sizeBytes: asset.sizeBytes,
     width: asset.width,
     height: asset.height,
