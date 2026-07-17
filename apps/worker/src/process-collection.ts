@@ -4,15 +4,13 @@ import { resolve, sep } from 'node:path';
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import { collections, type Database } from '@media-scraper/database';
 import { extractMedia } from '@media-scraper/extractors';
+import type { MediaStorage } from '@media-scraper/storage';
 import {
   PLATFORM_CREDENTIALS,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
-import {
-  prepareMedia,
-  removeUntrackedFiles,
-  safeMediaPath,
-} from './collection-files.js';
+import { prepareMedia, removeUntrackedFiles } from './collection-files.js';
+import { optimizeMedia } from './optimize-media.js';
 import { persistCollection } from './persist-collection.js';
 
 const MAX_ERROR_LENGTH = 4_000;
@@ -23,12 +21,15 @@ interface ProcessOptions {
   credentialsRoot: string;
   db: Database;
   extractionTimeoutMs: number;
+  imageMaxDimension: number;
   isFinalAttempt: boolean;
   maxAssetBytes: number;
   maxCollectionBytes: number;
-  mediaRoot: string;
   metadataConcurrency: number;
+  optimizationTimeoutMs: number;
   signal: AbortSignal;
+  storage: MediaStorage;
+  videoMaxDimension: number;
 }
 
 export async function processCollection(
@@ -37,15 +38,18 @@ export async function processCollection(
     credentialsRoot,
     db,
     extractionTimeoutMs,
+    imageMaxDimension,
     isFinalAttempt,
     maxAssetBytes,
     maxCollectionBytes,
-    mediaRoot,
     metadataConcurrency,
+    optimizationTimeoutMs,
     signal,
+    storage,
+    videoMaxDimension,
   }: ProcessOptions,
 ) {
-  const root = resolve(mediaRoot);
+  const root = storage.mediaRoot;
   const outputDirectory = resolve(
     root,
     'collections',
@@ -113,7 +117,6 @@ export async function processCollection(
   claimRenewal.unref();
 
   let retainedPaths = new Set<string>();
-  let obsoletePaths: string[] = [];
   try {
     await mkdir(outputDirectory, { recursive: true });
     const credentialPath = resolve(
@@ -140,7 +143,14 @@ export async function processCollection(
       throw new Error('Extractor did not return any media items');
     }
 
-    const preparedItems = await prepareMedia(extractedItems, {
+    const optimizedItems = await optimizeMedia(extractedItems, {
+      imageMaxDimension,
+      outputRoot: outputDirectory,
+      signal,
+      timeoutMs: optimizationTimeoutMs,
+      videoMaxDimension,
+    });
+    const preparedItems = await prepareMedia(optimizedItems, {
       maxAssetBytes,
       maxCollectionBytes,
       metadataConcurrency,
@@ -148,12 +158,13 @@ export async function processCollection(
     });
     signal.throwIfAborted();
     await renewClaim();
-    ({ retainedPaths, obsoletePaths } = await persistCollection(
+    ({ retainedPaths } = await persistCollection(
       db,
       job,
       preparedItems,
-      root,
+      storage,
       claimOwner,
+      signal,
     ));
   } catch (error) {
     const message = (
@@ -186,10 +197,4 @@ export async function processCollection(
   await removeUntrackedFiles(outputDirectory, root, retainedPaths).catch(
     (error) => console.warn('Could not clean extraction sidecars', error),
   );
-  await Promise.all(
-    obsoletePaths.map(async (obsoletePath) => {
-      const absolutePath = safeMediaPath(root, obsoletePath);
-      if (absolutePath) await rm(absolutePath, { force: true });
-    }),
-  ).catch((error) => console.warn('Could not remove obsolete media', error));
 }

@@ -8,6 +8,11 @@ export const COLLECTION_STATUSES = [
   'failed',
 ] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
+export const MEDIA_MAINTENANCE_TYPES = [
+  'delete_local',
+  'delete_object',
+  'enforce_retention',
+] as const;
 export const COLLECTION_QUEUE_NAME = 'media-collections';
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
@@ -16,10 +21,12 @@ export const MAX_PAGE_SIZE = 100;
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
+export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
+export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
 
 interface PlatformCredentialConfig {
   domain: string;

@@ -11,17 +11,20 @@ interface ProbeOutput {
     width?: number;
     height?: number;
     duration?: string;
+    r_frame_rate?: string;
+    nb_read_frames?: string;
   }>;
   format?: { duration?: string };
 }
 
-function probe(path: string): Promise<ProbeOutput> {
+function probe(path: string, countFrames: boolean): Promise<ProbeOutput> {
   return new Promise((resolve) => {
     const child = spawn('ffprobe', [
       '-v',
       'error',
+      ...(countFrames ? ['-count_frames'] : []),
       '-show_entries',
-      'stream=width,height,duration:format=duration',
+      'stream=width,height,duration,r_frame_rate,nb_read_frames:format=duration',
       '-of',
       'json',
       path,
@@ -59,29 +62,62 @@ function hashFile(path: string): Promise<string> {
   });
 }
 
-export async function readFileMetadata(path: string) {
-  const [fileStat, contentHash, probeOutput] = await Promise.all([
-    stat(path),
-    hashFile(path),
-    probe(path),
-  ]);
+export async function probeFile(path: string, countFrames = false) {
+  const probeOutput = await probe(path, countFrames);
   const stream = probeOutput.streams?.find(
     (entry) => entry.width !== undefined || entry.height !== undefined,
   );
   const rawDuration = stream?.duration ?? probeOutput.format?.duration;
   const parsedDuration = rawDuration ? Number(rawDuration) : undefined;
+  const [frameRateNumerator, frameRateDenominator] = (
+    stream?.r_frame_rate ?? ''
+  )
+    .split('/')
+    .map(Number);
+  const parsedFrameCount = stream?.nb_read_frames
+    ? Number(stream.nb_read_frames)
+    : undefined;
+  const frameRate =
+    frameRateNumerator !== undefined &&
+    frameRateDenominator !== undefined &&
+    Number.isFinite(frameRateNumerator) &&
+    Number.isFinite(frameRateDenominator) &&
+    frameRateDenominator > 0
+      ? frameRateNumerator / frameRateDenominator
+      : null;
 
   return {
-    sizeBytes: fileStat.size,
-    contentHash,
-    mimeType: lookup(path) || 'application/octet-stream',
-    width: stream?.width ?? null,
-    height: stream?.height ?? null,
     durationSeconds:
       parsedDuration !== undefined &&
       Number.isFinite(parsedDuration) &&
       parsedDuration >= 0
         ? parsedDuration
         : null,
+    frameCount:
+      parsedFrameCount !== undefined &&
+      Number.isInteger(parsedFrameCount) &&
+      parsedFrameCount > 0
+        ? parsedFrameCount
+        : null,
+    frameRate,
+    height: stream?.height ?? null,
+    width: stream?.width ?? null,
+  };
+}
+
+export async function readFileMetadata(path: string) {
+  const [fileStat, contentHash, fileProbe] = await Promise.all([
+    stat(path),
+    hashFile(path),
+    probeFile(path),
+  ]);
+
+  return {
+    sizeBytes: fileStat.size,
+    contentHash,
+    mimeType: lookup(path) || 'application/octet-stream',
+    width: fileProbe.width,
+    height: fileProbe.height,
+    durationSeconds: fileProbe.durationSeconds,
   };
 }

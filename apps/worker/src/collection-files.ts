@@ -1,5 +1,5 @@
 import { readdir, rm, rmdir } from 'node:fs/promises';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import type { ExtractedFile, ExtractedMedia } from '@media-scraper/extractors';
 import { readFileMetadata } from './file-metadata.js';
 
@@ -85,11 +85,6 @@ export async function prepareMedia(
     throw new Error('Collection exceeds the configured total size limit');
   }
   return preparedItems;
-}
-
-export function safeMediaPath(root: string, relativePath: string) {
-  const absolutePath = resolve(root, relativePath);
-  return absolutePath.startsWith(`${root}${sep}`) ? absolutePath : undefined;
 }
 
 export async function removeUntrackedFiles(
