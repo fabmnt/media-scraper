@@ -529,15 +529,12 @@ button:disabled {
   overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--line);
-  cursor: pointer;
   transition:
     border-color 160ms ease,
     transform 160ms ease;
 }
-.media-card:hover,
-.media-card:focus-visible {
+.media-card:hover {
   border-color: var(--accent);
-  outline: none;
   transform: translateY(-2px);
 }
 .preview {
@@ -635,14 +632,17 @@ button:disabled {
 .card-actions a,
 .card-actions button {
   min-width: 0;
+  min-height: 32px;
+  display: flex;
   flex: 1;
+  align-items: center;
   overflow: hidden;
-  padding: 0;
+  padding: 4px 2px;
   color: var(--muted);
   background: transparent;
   text-align: left;
   text-overflow: ellipsis;
-  font-size: 9px;
+  font-size: 11px;
 }
 .card-actions a:hover,
 .card-actions button:hover {
@@ -656,11 +656,21 @@ button:disabled {
   position: fixed;
   z-index: 100;
   inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  display: none;
+  margin: 0;
+  padding: 24px;
+  color: inherit;
+  background: rgb(5 6 5 / 92%);
+  border: 0;
+  backdrop-filter: blur(8px);
+}
+.media-preview-modal[open] {
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: rgb(5 6 5 / 92%);
-  backdrop-filter: blur(8px);
 }
 .media-preview-dialog {
   width: min(1280px, 100%);
@@ -807,7 +817,7 @@ button:disabled {
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   .feature-grid {
     grid-template-columns: 1fr;
   }
@@ -897,7 +907,6 @@ button:disabled {
     grid-template-columns: 1fr;
     gap: 10px;
   }
-  .collector form,
   .collector form,
   .credential-actions {
     align-items: stretch;

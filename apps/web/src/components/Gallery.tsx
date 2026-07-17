@@ -48,20 +48,7 @@ function MediaCard({
   }
 
   return (
-    <article
-      className="media-card"
-      onClick={onPreview}
-      onKeyDown={(event) => {
-        if (
-          event.currentTarget === event.target &&
-          (event.key === 'Enter' || event.key === ' ')
-        ) {
-          event.preventDefault();
-          onPreview();
-        }
-      }}
-      tabIndex={0}
-    >
+    <article className="media-card">
       <div className="preview">
         {selectedAsset?.type === 'image' ? (
           <img
@@ -88,10 +75,7 @@ function MediaCard({
             <button
               aria-label="Previous asset"
               className="carousel-control carousel-previous"
-              onClick={(event) => {
-                event.stopPropagation();
-                selectAdjacentAsset(-1);
-              }}
+              onClick={() => selectAdjacentAsset(-1)}
               type="button"
             >
               ‹
@@ -99,10 +83,7 @@ function MediaCard({
             <button
               aria-label="Next asset"
               className="carousel-control carousel-next"
-              onClick={(event) => {
-                event.stopPropagation();
-                selectAdjacentAsset(1);
-              }}
+              onClick={() => selectAdjacentAsset(1)}
               type="button"
             >
               ›
@@ -118,10 +99,14 @@ function MediaCard({
           <span>{new Date(item.collectedAt).toLocaleDateString()}</span>
         </div>
         <p>{item.caption ?? 'No caption available'}</p>
-        <div
-          className="card-actions"
-          onClick={(event) => event.stopPropagation()}
-        >
+        <div className="card-actions">
+          <button
+            aria-label={`Preview media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
+            onClick={onPreview}
+            type="button"
+          >
+            Preview
+          </button>
           <a href={item.sourceUrl} rel="noreferrer" target="_blank">
             Source ↗
           </a>

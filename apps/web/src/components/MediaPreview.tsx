@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 
@@ -11,6 +11,7 @@ export function MediaPreview({
   items: MediaItem[];
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const initialItemIndex = Math.max(
     items.findIndex((item) => item.id === initialItemId),
     0,
@@ -24,7 +25,7 @@ export function MediaPreview({
     ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1
     : false;
 
-  function showPrevious() {
+  const showPrevious = useCallback(() => {
     if (!item || !canGoPrevious) return;
     if (assetIndex > 0) {
       setAssetIndex((current) => current - 1);
@@ -34,9 +35,9 @@ export function MediaPreview({
     const previousAssetCount = items[previousItemIndex]?.assets.length ?? 0;
     setItemIndex(previousItemIndex);
     setAssetIndex(Math.max(previousAssetCount - 1, 0));
-  }
+  }, [assetIndex, canGoPrevious, item, itemIndex, items]);
 
-  function showNext() {
+  const showNext = useCallback(() => {
     if (!item || !canGoNext) return;
     if (assetIndex < item.assets.length - 1) {
       setAssetIndex((current) => current + 1);
@@ -44,10 +45,33 @@ export function MediaPreview({
     }
     setItemIndex((current) => current + 1);
     setAssetIndex(0);
-  }
+  }, [assetIndex, canGoNext, item]);
+
+  const closePreview = useCallback(() => {
+    dialogRef.current?.close();
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialog?.showModal();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (dialog?.open) dialog.close();
+    };
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLVideoElement &&
+        (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+      ) {
+        return;
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         showPrevious();
@@ -55,32 +79,30 @@ export function MediaPreview({
         event.preventDefault();
         showNext();
       } else if (event.key === 'Escape') {
-        onClose();
+        event.preventDefault();
+        closePreview();
       }
     };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  });
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [closePreview, showNext, showPrevious]);
 
   if (!item) return null;
 
   return (
-    <div
+    <dialog
       aria-label="Media preview"
-      aria-modal="true"
       className="media-preview-modal"
-      onClick={onClose}
-      role="dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        closePreview();
+      }}
+      onClick={(event) => {
+        if (event.currentTarget === event.target) closePreview();
+      }}
+      ref={dialogRef}
     >
-      <div
-        className="media-preview-dialog"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="media-preview-dialog">
         <header className="media-preview-header">
           <div>
             <span className="eyebrow">{item.platform}</span>
@@ -94,7 +116,7 @@ export function MediaPreview({
           <button
             aria-label="Close preview"
             className="preview-close"
-            onClick={onClose}
+            onClick={closePreview}
             type="button"
           >
             ×
@@ -151,6 +173,6 @@ export function MediaPreview({
           </div>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
