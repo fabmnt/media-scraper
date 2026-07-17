@@ -109,10 +109,10 @@ export async function buildApp(config: ApiConfig) {
 
   app.get('/health', async (_request, reply) => {
     try {
-      await Promise.all([
-        database.db.execute(sql`select 1`),
-        withTimeout(redis.ping(), HEALTH_CHECK_TIMEOUT_MS),
-      ]);
+      await withTimeout(
+        Promise.all([database.db.execute(sql`select 1`), redis.ping()]),
+        HEALTH_CHECK_TIMEOUT_MS,
+      );
       return { status: 'ok' };
     } catch (error) {
       app.log.error(error, 'Health check failed');
