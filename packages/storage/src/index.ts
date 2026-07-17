@@ -31,6 +31,16 @@ export interface StoredAssetLocation {
   storageKey: string | null;
 }
 
+export class StorageUploadError extends Error {
+  readonly location: StoredAssetLocation;
+
+  constructor(storageKey: string, cause: unknown) {
+    super(`Failed to upload object ${storageKey}`, { cause });
+    this.name = 'StorageUploadError';
+    this.location = { relativePath: null, storageKey };
+  }
+}
+
 export class MediaStorage {
   readonly driver: MediaStorageOptions['driver'];
   readonly mediaRoot: string;
@@ -82,18 +92,22 @@ export class MediaStorage {
     }
 
     const storageKey = `media/${contentHash.slice(0, 2)}/${contentHash}-${randomUUID()}`;
-    const fileStat = await stat(absolutePath);
-    await this.s3.send(
-      new PutObjectCommand({
-        Body: createReadStream(absolutePath),
-        Bucket: this.bucket,
-        ContentLength: fileStat.size,
-        ContentType: mimeType,
-        Key: storageKey,
-      }),
-      signal ? { abortSignal: signal } : undefined,
-    );
-    return { relativePath: null, storageKey };
+    try {
+      const fileStat = await stat(absolutePath);
+      await this.s3.send(
+        new PutObjectCommand({
+          Body: createReadStream(absolutePath),
+          Bucket: this.bucket,
+          ContentLength: fileStat.size,
+          ContentType: mimeType,
+          Key: storageKey,
+        }),
+        signal ? { abortSignal: signal } : undefined,
+      );
+      return { relativePath: null, storageKey };
+    } catch (error) {
+      throw new StorageUploadError(storageKey, error);
+    }
   }
 
   async createReadUrl(storageKey: string, downloadFileName?: string) {

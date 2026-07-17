@@ -5,7 +5,11 @@ import {
   enqueueAssetCleanup,
   mediaAssets,
 } from '@media-scraper/database';
-import { MediaStorage, type StoredAssetLocation } from '@media-scraper/storage';
+import {
+  MediaStorage,
+  StorageUploadError,
+  type StoredAssetLocation,
+} from '@media-scraper/storage';
 
 const config = loadWorkerConfig();
 const storage = new MediaStorage(mediaStorageOptions(config));
@@ -84,6 +88,9 @@ try {
       migratedBytes += updatedAsset.sizeBytes;
       console.info(`Migrated asset ${asset.id}`);
     } catch (error) {
+      if (error instanceof StorageUploadError) {
+        location = error.location;
+      }
       if (location?.storageKey) {
         try {
           await enqueueAssetCleanup(database.db, [location]);

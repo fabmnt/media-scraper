@@ -9,8 +9,14 @@ import {
   type Database,
 } from '@media-scraper/database';
 import type { CollectionJobPayload } from '@media-scraper/shared';
-import type { MediaStorage, StoredAssetLocation } from '@media-scraper/storage';
+import {
+  StorageUploadError,
+  type MediaStorage,
+  type StoredAssetLocation,
+} from '@media-scraper/storage';
 import type { PreparedMedia } from './collection-files.js';
+
+const STORE_CONCURRENCY = 4;
 
 export async function persistCollection(
   db: Database,
@@ -22,49 +28,88 @@ export async function persistCollection(
 ) {
   const storedLocations = new Map<string, StoredAssetLocation>();
   try {
+    const acceptedItems: PreparedMedia[] = [];
+    for (const extractedItem of preparedItems) {
+      const contentHashes = extractedItem.files.map(
+        (file) => file.metadata.contentHash,
+      );
+      const duplicateAssets =
+        contentHashes.length === 0
+          ? []
+          : await db
+              .select({
+                contentHash: mediaAssets.contentHash,
+                mediaItemId: mediaAssets.mediaItemId,
+              })
+              .from(mediaAssets)
+              .innerJoin(mediaItems, eq(mediaAssets.mediaItemId, mediaItems.id))
+              .where(
+                and(
+                  inArray(mediaAssets.contentHash, contentHashes),
+                  or(
+                    ne(mediaItems.platform, job.platform),
+                    ne(mediaItems.sourceId, extractedItem.sourceId),
+                  ),
+                ),
+              );
+      const hashesByMediaItem = new Map<string, Set<string>>();
+      for (const asset of duplicateAssets) {
+        const hashes = hashesByMediaItem.get(asset.mediaItemId) ?? new Set();
+        hashes.add(asset.contentHash);
+        hashesByMediaItem.set(asset.mediaItemId, hashes);
+      }
+      const isDuplicate =
+        contentHashes.length > 0 &&
+        [...hashesByMediaItem.values()].some((hashes) =>
+          contentHashes.every((hash) => hashes.has(hash)),
+        );
+      if (!isDuplicate) acceptedItems.push(extractedItem);
+    }
+
+    const filesByPath = new Map(
+      acceptedItems
+        .flatMap((item) => item.files)
+        .map((file) => [file.absolutePath, file]),
+    );
+    const filesToStore = [...filesByPath.values()];
+    let nextFileIndex = 0;
+    const storeResults = await Promise.allSettled(
+      Array.from(
+        { length: Math.min(STORE_CONCURRENCY, filesToStore.length) },
+        async () => {
+          while (nextFileIndex < filesToStore.length) {
+            signal.throwIfAborted();
+            const file = filesToStore[nextFileIndex];
+            nextFileIndex += 1;
+            if (!file) continue;
+            try {
+              storedLocations.set(
+                file.absolutePath,
+                await storage.store(
+                  file.absolutePath,
+                  file.metadata.contentHash,
+                  file.metadata.mimeType,
+                  signal,
+                ),
+              );
+            } catch (error) {
+              if (error instanceof StorageUploadError) {
+                storedLocations.set(file.absolutePath, error.location);
+              }
+              throw error;
+            }
+          }
+        },
+      ),
+    );
+    const failedStore = storeResults.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    if (failedStore) throw failedStore.reason;
+
     return await db.transaction(async (transaction) => {
       const retainedPaths = new Set<string>();
-      for (const extractedItem of preparedItems) {
-        const contentHashes = extractedItem.files.map(
-          (file) => file.metadata.contentHash,
-        );
-        const duplicateAssets =
-          contentHashes.length === 0
-            ? []
-            : await transaction
-                .select({
-                  contentHash: mediaAssets.contentHash,
-                  mediaItemId: mediaAssets.mediaItemId,
-                })
-                .from(mediaAssets)
-                .innerJoin(
-                  mediaItems,
-                  eq(mediaAssets.mediaItemId, mediaItems.id),
-                )
-                .where(
-                  and(
-                    inArray(mediaAssets.contentHash, contentHashes),
-                    or(
-                      ne(mediaItems.platform, job.platform),
-                      ne(mediaItems.sourceId, extractedItem.sourceId),
-                    ),
-                  ),
-                );
-        const hashesByMediaItem = new Map<string, Set<string>>();
-        for (const asset of duplicateAssets) {
-          const hashes = hashesByMediaItem.get(asset.mediaItemId) ?? new Set();
-          hashes.add(asset.contentHash);
-          hashesByMediaItem.set(asset.mediaItemId, hashes);
-        }
-        if (
-          contentHashes.length > 0 &&
-          [...hashesByMediaItem.values()].some((hashes) =>
-            contentHashes.every((hash) => hashes.has(hash)),
-          )
-        ) {
-          continue;
-        }
-
+      for (const extractedItem of acceptedItems) {
         const [item] = await transaction
           .insert(mediaItems)
           .values({
@@ -90,18 +135,6 @@ export async function persistCollection(
           .returning({ id: mediaItems.id });
         if (!item) throw new Error('Failed to save extracted media');
 
-        for (const file of extractedItem.files) {
-          storedLocations.set(
-            file.absolutePath,
-            await storage.store(
-              file.absolutePath,
-              file.metadata.contentHash,
-              file.metadata.mimeType,
-              signal,
-            ),
-          );
-        }
-
         const previousAssets = await transaction
           .select({
             relativePath: mediaAssets.relativePath,
@@ -117,8 +150,9 @@ export async function persistCollection(
             extractedItem.files.map((file, position) => {
               const location = storedLocations.get(file.absolutePath);
               if (!location) throw new Error('Media file was not stored');
-              if (location.relativePath)
+              if (location.relativePath) {
                 retainedPaths.add(location.relativePath);
+              }
               return {
                 mediaItemId: item.id,
                 type: file.type,

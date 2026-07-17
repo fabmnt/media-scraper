@@ -124,7 +124,8 @@ export async function mediaRoutes(
       const [existing] = await transaction
         .select({ id: mediaItems.id })
         .from(mediaItems)
-        .where(eq(mediaItems.id, id));
+        .where(eq(mediaItems.id, id))
+        .for('update');
       if (!existing) return false;
 
       const assets = await transaction
