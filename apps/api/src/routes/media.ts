@@ -30,6 +30,9 @@ const mediaQuerySchema = z.object({
   search: z.string().trim().min(1).max(200).optional(),
 });
 const idParamsSchema = z.object({ id: z.uuid() });
+const assetParamsSchema = idParamsSchema.extend({
+  action: z.enum(['content', 'download']),
+});
 
 function pathWithinRoot(root: string, relativePath: string) {
   const absolutePath = resolve(root, relativePath);
@@ -104,8 +107,8 @@ export async function mediaRoutes(
     };
   });
 
-  app.get('/:id/download', async (request, reply) => {
-    const { id } = idParamsSchema.parse(request.params);
+  app.get('/:id/:action', async (request, reply) => {
+    const { action, id } = assetParamsSchema.parse(request.params);
     const [asset] = await db
       .select()
       .from(mediaAssets)
@@ -114,11 +117,14 @@ export async function mediaRoutes(
     if (!pathWithinRoot(root, asset.relativePath)) {
       return reply.code(400).send({ message: 'Invalid asset path' });
     }
-    const safeFileName = basename(asset.fileName).replace(/["\r\n]/g, '_');
-    reply.header(
-      'content-disposition',
-      `attachment; filename="${safeFileName}"`,
-    );
+    if (action === 'download') {
+      const safeFileName = basename(asset.fileName).replace(/["\r\n]/g, '_');
+      reply.header(
+        'content-disposition',
+        `attachment; filename="${safeFileName}"`,
+      );
+    }
+    reply.type(asset.mimeType);
     return reply.sendFile(asset.relativePath, root);
   });
 
