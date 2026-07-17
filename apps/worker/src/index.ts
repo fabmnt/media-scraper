@@ -1,17 +1,19 @@
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import { loadWorkerConfig } from '@media-scraper/config';
+import { loadWorkerConfig, mediaStorageOptions } from '@media-scraper/config';
 import { createDatabase } from '@media-scraper/database';
 import {
   COLLECTION_QUEUE_NAME,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
+import { MediaStorage } from '@media-scraper/storage';
 import { processCollection } from './process-collection.js';
 
 const config = loadWorkerConfig();
 const database = createDatabase(config.DATABASE_URL);
 const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
 const shutdownController = new AbortController();
+const storage = new MediaStorage(mediaStorageOptions(config));
 const worker = new Worker<CollectionJobPayload>(
   COLLECTION_QUEUE_NAME,
   async (job) =>
@@ -19,14 +21,21 @@ const worker = new Worker<CollectionJobPayload>(
       credentialsRoot: config.CREDENTIALS_ROOT,
       db: database.db,
       extractionTimeoutMs: config.EXTRACTION_TIMEOUT_MS,
+      imageMaxDimension: config.IMAGE_MAX_DIMENSION,
       isFinalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
       maxAssetBytes: config.MAX_ASSET_BYTES,
       maxCollectionBytes: config.MAX_COLLECTION_BYTES,
+      maxMediaStorageBytes: config.MAX_MEDIA_STORAGE_BYTES,
       mediaRoot: config.MEDIA_ROOT,
       metadataConcurrency: config.METADATA_CONCURRENCY,
+      optimizationTimeoutMs: config.OPTIMIZATION_TIMEOUT_MS,
+      retentionTargetPercent: config.MEDIA_RETENTION_TARGET_PERCENT,
+      retentionTriggerPercent: config.MEDIA_RETENTION_TRIGGER_PERCENT,
       signal: shutdownController.signal,
+      storage,
+      videoMaxDimension: config.VIDEO_MAX_DIMENSION,
     }),
-  { connection: redis, concurrency: 2 },
+  { connection: redis, concurrency: 1 },
 );
 
 worker.on('completed', (job) => {
@@ -51,6 +60,7 @@ function shutdown() {
       () => worker.close(),
       () => redis.quit(),
       () => database.close(),
+      () => storage.close(),
     ]) {
       try {
         await close();

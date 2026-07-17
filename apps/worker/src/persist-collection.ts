@@ -1,4 +1,4 @@
-import { basename, relative } from 'node:path';
+import { basename } from 'node:path';
 import { and, eq, inArray, ne, or } from 'drizzle-orm';
 import {
   collections,
@@ -7,123 +7,174 @@ import {
   type Database,
 } from '@media-scraper/database';
 import type { CollectionJobPayload } from '@media-scraper/shared';
+import type { MediaStorage, StoredAssetLocation } from '@media-scraper/storage';
 import type { PreparedMedia } from './collection-files.js';
+
+export type ObsoleteAsset = StoredAssetLocation;
 
 export async function persistCollection(
   db: Database,
   job: CollectionJobPayload,
   preparedItems: PreparedMedia[],
-  mediaRoot: string,
+  storage: MediaStorage,
   claimOwner: string,
 ) {
-  return db.transaction(async (transaction) => {
-    const retainedPaths = new Set<string>();
-    const obsoletePaths: string[] = [];
-    for (const extractedItem of preparedItems) {
-      const contentHashes = extractedItem.files.map(
-        (file) => file.metadata.contentHash,
-      );
-      const duplicateAssets =
-        contentHashes.length === 0
-          ? []
-          : await transaction
-              .select({
-                contentHash: mediaAssets.contentHash,
-                mediaItemId: mediaAssets.mediaItemId,
-              })
-              .from(mediaAssets)
-              .innerJoin(mediaItems, eq(mediaAssets.mediaItemId, mediaItems.id))
-              .where(
-                and(
-                  inArray(mediaAssets.contentHash, contentHashes),
-                  or(
-                    ne(mediaItems.platform, job.platform),
-                    ne(mediaItems.sourceId, extractedItem.sourceId),
-                  ),
-                ),
-              );
-      const hashesByMediaItem = new Map<string, Set<string>>();
-      for (const asset of duplicateAssets) {
-        const hashes = hashesByMediaItem.get(asset.mediaItemId) ?? new Set();
-        hashes.add(asset.contentHash);
-        hashesByMediaItem.set(asset.mediaItemId, hashes);
+  const storedLocations = new Map<string, StoredAssetLocation>();
+  try {
+    for (const preparedItem of preparedItems) {
+      for (const file of preparedItem.files) {
+        storedLocations.set(
+          file.absolutePath,
+          await storage.store(
+            file.absolutePath,
+            file.metadata.contentHash,
+            file.metadata.mimeType,
+          ),
+        );
       }
-      if (
-        contentHashes.length > 0 &&
-        [...hashesByMediaItem.values()].some((hashes) =>
-          contentHashes.every((hash) => hashes.has(hash)),
-        )
-      ) {
-        continue;
-      }
+    }
 
-      const [item] = await transaction
-        .insert(mediaItems)
-        .values({
-          collectionId: job.collectionId,
-          platform: job.platform,
-          sourceId: extractedItem.sourceId,
-          sourceUrl: extractedItem.sourceUrl,
-          authorName: extractedItem.authorName,
-          caption: extractedItem.caption,
-          publishedAt: extractedItem.publishedAt,
-        })
-        .onConflictDoUpdate({
-          target: [mediaItems.platform, mediaItems.sourceId],
-          set: {
+    return await db.transaction(async (transaction) => {
+      const retainedPaths = new Set<string>();
+      const obsoleteAssets: ObsoleteAsset[] = [];
+      for (const extractedItem of preparedItems) {
+        const contentHashes = extractedItem.files.map(
+          (file) => file.metadata.contentHash,
+        );
+        const duplicateAssets =
+          contentHashes.length === 0
+            ? []
+            : await transaction
+                .select({
+                  contentHash: mediaAssets.contentHash,
+                  mediaItemId: mediaAssets.mediaItemId,
+                })
+                .from(mediaAssets)
+                .innerJoin(
+                  mediaItems,
+                  eq(mediaAssets.mediaItemId, mediaItems.id),
+                )
+                .where(
+                  and(
+                    inArray(mediaAssets.contentHash, contentHashes),
+                    or(
+                      ne(mediaItems.platform, job.platform),
+                      ne(mediaItems.sourceId, extractedItem.sourceId),
+                    ),
+                  ),
+                );
+        const hashesByMediaItem = new Map<string, Set<string>>();
+        for (const asset of duplicateAssets) {
+          const hashes = hashesByMediaItem.get(asset.mediaItemId) ?? new Set();
+          hashes.add(asset.contentHash);
+          hashesByMediaItem.set(asset.mediaItemId, hashes);
+        }
+        if (
+          contentHashes.length > 0 &&
+          [...hashesByMediaItem.values()].some((hashes) =>
+            contentHashes.every((hash) => hashes.has(hash)),
+          )
+        ) {
+          continue;
+        }
+
+        const [item] = await transaction
+          .insert(mediaItems)
+          .values({
             collectionId: job.collectionId,
+            platform: job.platform,
+            sourceId: extractedItem.sourceId,
             sourceUrl: extractedItem.sourceUrl,
             authorName: extractedItem.authorName,
             caption: extractedItem.caption,
             publishedAt: extractedItem.publishedAt,
-            collectedAt: new Date(),
-          },
-        })
-        .returning({ id: mediaItems.id });
-      if (!item) throw new Error('Failed to save extracted media');
+          })
+          .onConflictDoUpdate({
+            target: [mediaItems.platform, mediaItems.sourceId],
+            set: {
+              collectionId: job.collectionId,
+              sourceUrl: extractedItem.sourceUrl,
+              authorName: extractedItem.authorName,
+              caption: extractedItem.caption,
+              publishedAt: extractedItem.publishedAt,
+              collectedAt: new Date(),
+            },
+          })
+          .returning({ id: mediaItems.id });
+        if (!item) throw new Error('Failed to save extracted media');
 
-      const previousAssets = await transaction
-        .select({ relativePath: mediaAssets.relativePath })
-        .from(mediaAssets)
-        .where(eq(mediaAssets.mediaItemId, item.id));
-      await transaction
-        .delete(mediaAssets)
-        .where(eq(mediaAssets.mediaItemId, item.id));
-      if (extractedItem.files.length > 0) {
-        await transaction.insert(mediaAssets).values(
-          extractedItem.files.map((file, position) => {
-            const relativePath = relative(mediaRoot, file.absolutePath);
-            retainedPaths.add(relativePath);
-            return {
-              mediaItemId: item.id,
-              type: file.type,
-              fileName: basename(file.absolutePath),
-              position,
-              relativePath,
-              ...file.metadata,
-            };
-          }),
+        const previousAssets = await transaction
+          .select({
+            relativePath: mediaAssets.relativePath,
+            storageKey: mediaAssets.storageKey,
+          })
+          .from(mediaAssets)
+          .where(eq(mediaAssets.mediaItemId, item.id));
+        await transaction
+          .delete(mediaAssets)
+          .where(eq(mediaAssets.mediaItemId, item.id));
+        if (extractedItem.files.length > 0) {
+          await transaction.insert(mediaAssets).values(
+            extractedItem.files.map((file, position) => {
+              const location = storedLocations.get(file.absolutePath);
+              if (!location) throw new Error('Media file was not stored');
+              if (location.relativePath)
+                retainedPaths.add(location.relativePath);
+              return {
+                mediaItemId: item.id,
+                type: file.type,
+                fileName: basename(file.absolutePath),
+                position,
+                ...location,
+                ...file.metadata,
+              };
+            }),
+          );
+        }
+        obsoleteAssets.push(...previousAssets);
+      }
+      const [completedCollection] = await transaction
+        .update(collections)
+        .set({
+          status: 'completed',
+          errorMessage: null,
+          claimOwner: null,
+          claimExpiresAt: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(collections.id, job.collectionId),
+            eq(collections.claimOwner, claimOwner),
+          ),
+        )
+        .returning({ id: collections.id });
+      if (!completedCollection) throw new Error('Collection claim was lost');
+      return { retainedPaths, obsoleteAssets };
+    });
+  } catch (error) {
+    const uploadedKeys = [...storedLocations.values()].flatMap((location) =>
+      location.storageKey ? [location.storageKey] : [],
+    );
+    if (uploadedKeys.length > 0) {
+      try {
+        const referencedAssets = await db
+          .select({ storageKey: mediaAssets.storageKey })
+          .from(mediaAssets)
+          .where(inArray(mediaAssets.storageKey, uploadedKeys));
+        const referencedKeys = new Set(
+          referencedAssets.map((asset) => asset.storageKey),
+        );
+        await storage.deleteObjects(
+          uploadedKeys.filter((storageKey) => !referencedKeys.has(storageKey)),
+        );
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [error, cleanupError],
+          'Could not persist media or clean uploaded objects',
         );
       }
-      obsoletePaths.push(...previousAssets.map((asset) => asset.relativePath));
     }
-    const [completedCollection] = await transaction
-      .update(collections)
-      .set({
-        status: 'completed',
-        errorMessage: null,
-        claimOwner: null,
-        claimExpiresAt: null,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(collections.id, job.collectionId),
-          eq(collections.claimOwner, claimOwner),
-        ),
-      )
-      .returning({ id: collections.id });
-    if (!completedCollection) throw new Error('Collection claim was lost');
-    return { retainedPaths, obsoletePaths };
-  });
+    throw error;
+  }
 }

@@ -15,6 +15,7 @@ COPY packages/config/package.json packages/config/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/extractors/package.json packages/extractors/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY packages/storage/package.json packages/storage/package.json
 RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/pnpm/store,target=/pnpm/store \
   pnpm install --frozen-lockfile
 

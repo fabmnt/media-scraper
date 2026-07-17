@@ -29,6 +29,13 @@
       "when": 1784248815647,
       "tag": "0003_regular_korg",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784324281027,
+      "tag": "0004_medical_sersi",
+      "breakpoints": true
     }
   ]
 }

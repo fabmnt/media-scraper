@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
+  check,
   index,
   integer,
   pgEnum,
@@ -87,7 +89,8 @@ export const mediaAssets = pgTable(
     type: mediaTypeEnum('type').notNull(),
     fileName: text('file_name').notNull(),
     position: integer('position').notNull(),
-    relativePath: text('relative_path').notNull(),
+    relativePath: text('relative_path'),
+    storageKey: text('storage_key'),
     mimeType: text('mime_type').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
     contentHash: text('content_hash').notNull(),
@@ -96,11 +99,16 @@ export const mediaAssets = pgTable(
     durationSeconds: real('duration_seconds'),
   },
   (table) => [
+    check(
+      'media_assets_storage_location_check',
+      sql`num_nonnulls(${table.relativePath}, ${table.storageKey}) = 1`,
+    ),
     uniqueIndex('media_assets_item_hash_idx').on(
       table.mediaItemId,
       table.contentHash,
     ),
     index('media_assets_hash_idx').on(table.contentHash),
+    index('media_assets_storage_key_idx').on(table.storageKey),
     uniqueIndex('media_assets_item_position_idx').on(
       table.mediaItemId,
       table.position,

@@ -9,6 +9,7 @@ import {
   mediaItems,
   type Database,
 } from '@media-scraper/database';
+import type { MediaStorage } from '@media-scraper/storage';
 import {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -34,11 +35,6 @@ const assetParamsSchema = idParamsSchema.extend({
   action: z.enum(['content', 'download']),
 });
 
-function pathWithinRoot(root: string, relativePath: string) {
-  const absolutePath = resolve(root, relativePath);
-  return absolutePath.startsWith(`${root}${sep}`) ? absolutePath : undefined;
-}
-
 async function removeEmptyParents(root: string, path: string) {
   let directory = dirname(path);
   while (directory.startsWith(`${root}${sep}`)) {
@@ -53,9 +49,9 @@ async function removeEmptyParents(root: string, path: string) {
 
 export async function mediaRoutes(
   app: FastifyInstance,
-  { db, mediaRoot }: { db: Database; mediaRoot: string },
+  { db, storage }: { db: Database; storage: MediaStorage },
 ) {
-  const root = resolve(mediaRoot);
+  const root = storage.mediaRoot;
 
   app.get('/', async (request): Promise<Page<MediaItem>> => {
     const query = mediaQuerySchema.parse(request.query);
@@ -114,7 +110,14 @@ export async function mediaRoutes(
       .from(mediaAssets)
       .where(eq(mediaAssets.id, id));
     if (!asset) return reply.code(404).send({ message: 'Asset not found' });
-    if (!pathWithinRoot(root, asset.relativePath)) {
+    if (asset.storageKey) {
+      const url = await storage.createReadUrl(
+        asset.storageKey,
+        action === 'download' ? asset.fileName : undefined,
+      );
+      return reply.redirect(url);
+    }
+    if (!asset.relativePath || !storage.localPath(asset.relativePath)) {
       return reply.code(400).send({ message: 'Invalid asset path' });
     }
     if (action === 'download') {
@@ -146,7 +149,8 @@ export async function mediaRoutes(
     const stagedFiles: Array<{ original: string; staged: string }> = [];
     try {
       for (const [index, asset] of assets.entries()) {
-        const original = pathWithinRoot(root, asset.relativePath);
+        if (!asset.relativePath) continue;
+        const original = storage.localPath(asset.relativePath);
         if (!original) continue;
         const staged = resolve(
           trashDirectory,
@@ -177,6 +181,25 @@ export async function mediaRoutes(
     await Promise.all(
       stagedFiles.map(({ original }) => removeEmptyParents(root, original)),
     );
+    const storageKeys = assets.flatMap((asset) =>
+      asset.storageKey ? [asset.storageKey] : [],
+    );
+    if (storageKeys.length > 0) {
+      const remainingAssets = await db
+        .select({ storageKey: mediaAssets.storageKey })
+        .from(mediaAssets)
+        .where(inArray(mediaAssets.storageKey, storageKeys));
+      const referencedKeys = new Set(
+        remainingAssets.map((asset) => asset.storageKey),
+      );
+      await storage
+        .deleteObjects(
+          storageKeys.filter((storageKey) => !referencedKeys.has(storageKey)),
+        )
+        .catch((error) =>
+          request.log.warn(error, 'Could not remove stored media objects'),
+        );
+    }
     return reply.code(204).send();
   });
 }

@@ -1,5 +1,5 @@
 {
-  "name": "@media-scraper/config",
+  "name": "@media-scraper/storage",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@media-scraper/storage": "workspace:*",
-    "zod": "^4.3.5"
+    "@aws-sdk/client-s3": "^3.1089.0",
+    "@aws-sdk/s3-request-presigner": "^3.1089.0"
   },
   "devDependencies": {
     "tsup": "^8.5.1"

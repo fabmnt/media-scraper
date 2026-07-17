@@ -13,6 +13,7 @@ import {
   COLLECTION_QUEUE_NAME,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
+import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
@@ -45,6 +46,7 @@ interface ApiConfig {
   credentialsRoot: string;
   databaseUrl: string;
   mediaRoot: string;
+  mediaStorage: MediaStorageOptions;
   redisUrl: string;
   secureCookie: boolean;
   webOrigin: string;
@@ -54,6 +56,7 @@ export async function buildApp(config: ApiConfig) {
   const app = Fastify({ logger: true });
   const database = createDatabase(config.databaseUrl);
   const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+  const storage = new MediaStorage(config.mediaStorage);
   const queue = new Queue<CollectionJobPayload>(COLLECTION_QUEUE_NAME, {
     connection: redis,
   });
@@ -104,7 +107,7 @@ export async function buildApp(config: ApiConfig) {
   await app.register(mediaRoutes, {
     prefix: '/media-items',
     db: database.db,
-    mediaRoot: config.mediaRoot,
+    storage,
   });
 
   app.get('/health', async (_request, reply) => {
@@ -123,6 +126,7 @@ export async function buildApp(config: ApiConfig) {
     await queue.close();
     await redis.quit();
     await database.close();
+    storage.close();
   });
 
   return app;

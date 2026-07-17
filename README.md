@@ -42,13 +42,20 @@ COOKIE_SECURE=true
 WEB_ORIGIN=http://localhost:5173
 MEDIA_ROOT=/data/media
 CREDENTIALS_ROOT=/data/credentials
+MAX_ASSET_BYTES=104857600
+MAX_COLLECTION_BYTES=524288000
+MAX_MEDIA_STORAGE_BYTES=4294967296
+MEDIA_RETENTION_TRIGGER_PERCENT=80
+MEDIA_RETENTION_TARGET_PERCENT=70
+VIDEO_MAX_DIMENSION=1280
+IMAGE_MAX_DIMENSION=1920
 ```
 
 Set the backend service's pre-deploy command to `pnpm db:migrate`, healthcheck path to `/health`, attach a Railway volume mounted at `/data`, and generate its public domain. Do not scale this volume-backed service horizontally.
 
 On the `web` service, set `API_PROXY_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}`, set `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`, and generate a public domain. The web service uses that backend URL as its server-side proxy target while browser requests stay on the web origin, allowing session cookies to remain first-party. Finally, change the backend's `WEB_ORIGIN` to `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` and redeploy it. Railway provides `PORT` automatically; the API and web preview are configured to listen on it.
 
-Railway's private networking supplies the database and Redis connections through the reference variables. The `/data` volume is required: without it, downloaded media and stored platform credentials are lost when the backend redeploys.
+Railway's private networking supplies the database and Redis connections through the reference variables. Keep the `/data` volume attached for extraction workspace and platform credentials; with local storage, it also holds all downloaded media.
 
 You can connect the GitHub repository to both application services so pushes to the selected branch redeploy them automatically. Set watch paths if desired; changes under `packages/**` should trigger both services.
 
@@ -77,7 +84,36 @@ pnpm dev
 
 Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resolved from the workspace root so the API and worker always share the same files. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
 
-Extraction is bounded by `MAX_ASSET_BYTES`, `MAX_COLLECTION_BYTES`, and `EXTRACTION_TIMEOUT_MS`. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
+Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Images except animated GIFs are converted to WebP with a maximum 1920px dimension. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
+
+`MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). The worker processes one collection at a time so quota decisions cannot race each other. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
+
+## S3-compatible media storage
+
+Local volume storage remains the default. For a larger archive, the API and worker can store final media in a private S3-compatible bucket while continuing to use `MEDIA_ROOT` as temporary extraction space and `CREDENTIALS_ROOT` for platform credentials.
+
+For a Railway Bucket, add its credentials to the `backend` service with Railway variable references:
+
+```text
+MEDIA_STORAGE_DRIVER=s3
+S3_BUCKET=${{media-bucket.BUCKET}}
+S3_ENDPOINT=${{media-bucket.ENDPOINT}}
+S3_REGION=${{media-bucket.REGION}}
+S3_ACCESS_KEY_ID=${{media-bucket.ACCESS_KEY_ID}}
+S3_SECRET_ACCESS_KEY=${{media-bucket.SECRET_ACCESS_KEY}}
+S3_FORCE_PATH_STYLE=false
+S3_PRESIGNED_URL_TTL_SECONDS=900
+```
+
+Replace `media-bucket` with the bucket service name. Objects use content-addressed keys, so identical optimized files share one object. The API keeps media private and redirects authenticated content requests to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
+
+After deploying and applying migrations, move existing local assets into the configured bucket with:
+
+```bash
+railway ssh --service backend pnpm --filter @media-scraper/worker storage:migrate
+```
+
+The migration uploads each object before updating its database location and deleting the local copy. Keep the volume attached afterward because extraction and credentials still use it. Railway Buckets do not currently provide lifecycle rules, so application retention remains enabled.
 
 ## Platform authentication
 

@@ -13,6 +13,7 @@ const IMAGE_EXTENSIONS = new Set([
   '.webp',
 ]);
 const MAX_COMMAND_OUTPUT_BYTES = 16 * 1024 * 1024;
+const MAX_VIDEO_DOWNLOAD_HEIGHT = 720;
 const OUTPUT_CHECK_INTERVAL_MS = 1_000;
 const TERMINATION_GRACE_MS = 5_000;
 
@@ -266,7 +267,7 @@ async function extractWithYtDlp(
       '--merge-output-format',
       'mp4',
       '--format',
-      'bv*[height<=1080]+ba/b[height<=1080]/best',
+      `bv*[height<=${String(MAX_VIDEO_DOWNLOAD_HEIGHT)}]+ba/b[height<=${String(MAX_VIDEO_DOWNLOAD_HEIGHT)}]/best[height<=${String(MAX_VIDEO_DOWNLOAD_HEIGHT)}]/best`,
       '--output',
       outputTemplate,
       '--print',

@@ -11,6 +11,7 @@ interface ProbeOutput {
     width?: number;
     height?: number;
     duration?: string;
+    r_frame_rate?: string;
   }>;
   format?: { duration?: string };
 }
@@ -21,7 +22,7 @@ function probe(path: string): Promise<ProbeOutput> {
       '-v',
       'error',
       '-show_entries',
-      'stream=width,height,duration:format=duration',
+      'stream=width,height,duration,r_frame_rate:format=duration',
       '-of',
       'json',
       path,
@@ -59,29 +60,53 @@ function hashFile(path: string): Promise<string> {
   });
 }
 
-export async function readFileMetadata(path: string) {
-  const [fileStat, contentHash, probeOutput] = await Promise.all([
-    stat(path),
-    hashFile(path),
-    probe(path),
-  ]);
+export async function probeFile(path: string) {
+  const probeOutput = await probe(path);
   const stream = probeOutput.streams?.find(
     (entry) => entry.width !== undefined || entry.height !== undefined,
   );
   const rawDuration = stream?.duration ?? probeOutput.format?.duration;
   const parsedDuration = rawDuration ? Number(rawDuration) : undefined;
+  const [frameRateNumerator, frameRateDenominator] = (
+    stream?.r_frame_rate ?? ''
+  )
+    .split('/')
+    .map(Number);
+  const frameRate =
+    frameRateNumerator !== undefined &&
+    frameRateDenominator !== undefined &&
+    Number.isFinite(frameRateNumerator) &&
+    Number.isFinite(frameRateDenominator) &&
+    frameRateDenominator > 0
+      ? frameRateNumerator / frameRateDenominator
+      : null;
 
   return {
-    sizeBytes: fileStat.size,
-    contentHash,
-    mimeType: lookup(path) || 'application/octet-stream',
-    width: stream?.width ?? null,
-    height: stream?.height ?? null,
     durationSeconds:
       parsedDuration !== undefined &&
       Number.isFinite(parsedDuration) &&
       parsedDuration >= 0
         ? parsedDuration
         : null,
+    frameRate,
+    height: stream?.height ?? null,
+    width: stream?.width ?? null,
+  };
+}
+
+export async function readFileMetadata(path: string) {
+  const [fileStat, contentHash, fileProbe] = await Promise.all([
+    stat(path),
+    hashFile(path),
+    probeFile(path),
+  ]);
+
+  return {
+    sizeBytes: fileStat.size,
+    contentHash,
+    mimeType: lookup(path) || 'application/octet-stream',
+    width: fileProbe.width,
+    height: fileProbe.height,
+    durationSeconds: fileProbe.durationSeconds,
   };
 }
