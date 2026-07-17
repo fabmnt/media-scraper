@@ -258,7 +258,7 @@ footer {
 }
 .dashboard-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   margin-bottom: 28px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -296,6 +296,10 @@ footer {
 .dashboard-tab-panel .jobs,
 .dashboard-tab-panel .gallery-section {
   padding-top: 0;
+}
+.get-media {
+  display: grid;
+  gap: 76px;
 }
 .credentials {
   margin-top: 12px;
@@ -915,7 +919,7 @@ button:disabled {
     padding: 80px 0;
   }
   .dashboard-tabs {
-    grid-template-columns: repeat(4, minmax(110px, 1fr));
+    grid-template-columns: repeat(3, minmax(110px, 1fr));
     overflow-x: auto;
   }
   .dashboard-tabs button {

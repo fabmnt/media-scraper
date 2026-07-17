@@ -9,8 +9,7 @@ import { JobsPanel } from './JobsPanel';
 
 const DASHBOARD_TABS = [
   { id: 'authentication', label: 'Authentication' },
-  { id: 'collect', label: 'Collect' },
-  { id: 'activity', label: 'Activity' },
+  { id: 'get-media', label: 'Get media' },
   { id: 'library', label: 'Media' },
 ] as const;
 type DashboardTab = (typeof DASHBOARD_TABS)[number]['id'];
@@ -18,6 +17,8 @@ const DEFAULT_TAB: DashboardTab = 'authentication';
 
 function tabFromHash(): DashboardTab {
   const tab = window.location.hash.slice(1);
+  if (tab === 'collect' || tab === 'activity') return 'get-media';
+
   return DASHBOARD_TABS.some((item) => item.id === tab)
     ? (tab as DashboardTab)
     : DEFAULT_TAB;
@@ -124,8 +125,12 @@ export function Dashboard() {
             SUPPORTED_PLATFORMS.map((platform) => (
               <PlatformCredentials key={platform} platform={platform} />
             ))}
-          {activeTab === 'collect' && <CollectionForm />}
-          {activeTab === 'activity' && <JobsPanel />}
+          {activeTab === 'get-media' && (
+            <div className="get-media">
+              <CollectionForm />
+              <JobsPanel />
+            </div>
+          )}
           {activeTab === 'library' && <Gallery />}
         </section>
       </main>
