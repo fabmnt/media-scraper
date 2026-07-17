@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { SUPPORTED_PLATFORMS } from '@media-scraper/shared';
 import { api } from '../api';
 import { CollectionForm } from './CollectionForm';
 import { Gallery } from './Gallery';
-import { InstagramCredentials } from './InstagramCredentials';
+import { PlatformCredentials } from './PlatformCredentials';
 import { JobsPanel } from './JobsPanel';
 
 const DASHBOARD_TABS = [
@@ -73,6 +74,11 @@ export function Dashboard() {
         >
           Sign out
         </button>
+        {logout.error && (
+          <p className="error" role="alert">
+            Could not sign out. {logout.error.message}
+          </p>
+        )}
       </header>
       <main className="dashboard-main">
         <section className="dashboard-intro">
@@ -114,7 +120,10 @@ export function Dashboard() {
           id={`${activeTab}-panel`}
           role="tabpanel"
         >
-          {activeTab === 'authentication' && <InstagramCredentials />}
+          {activeTab === 'authentication' &&
+            SUPPORTED_PLATFORMS.map((platform) => (
+              <PlatformCredentials key={platform} platform={platform} />
+            ))}
           {activeTab === 'collect' && <CollectionForm />}
           {activeTab === 'activity' && <JobsPanel />}
           {activeTab === 'library' && <Gallery />}

@@ -1,35 +1,52 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MAX_CREDENTIAL_LENGTH } from '@media-scraper/shared';
+import {
+  MAX_CREDENTIAL_LENGTH,
+  PLATFORM_CREDENTIALS,
+  type Platform,
+} from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
-export function InstagramCredentials() {
+const PLATFORM_DETAILS = {
+  instagram: {
+    label: 'Instagram',
+    placeholder: 'sessionid=...; csrftoken=...; ds_user_id=...',
+  },
+  facebook: {
+    label: 'Facebook',
+    placeholder: 'c_user=...; xs=...; datr=...',
+  },
+  tiktok: {
+    label: 'TikTok',
+    placeholder: 'sid_tt=...; tt_csrf_token=...; passport_csrf_token=...',
+  },
+} as const satisfies Record<Platform, { label: string; placeholder: string }>;
+
+export function PlatformCredentials({ platform }: { platform: Platform }) {
   const [cookies, setCookies] = useState('');
   const [fileError, setFileError] = useState<string>();
   const fileInput = useRef<HTMLInputElement>(null);
   const fileSelection = useRef(0);
   const queryClient = useQueryClient();
+  const queryKey = queryKeys.credential(platform);
+  const details = PLATFORM_DETAILS[platform];
   const status = useQuery({
-    queryKey: queryKeys.instagramCredential,
-    queryFn: api.getInstagramCredential,
+    queryKey,
+    queryFn: () => api.getCredential(platform),
   });
   const save = useMutation({
-    mutationFn: api.saveInstagramCredential,
+    mutationFn: (value: string) => api.saveCredential(platform, value),
     onSuccess: async () => {
       setCookies('');
       if (fileInput.current) fileInput.current.value = '';
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.instagramCredential,
-      });
+      await queryClient.invalidateQueries({ queryKey });
     },
   });
   const remove = useMutation({
-    mutationFn: api.deleteInstagramCredential,
+    mutationFn: () => api.deleteCredential(platform),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.instagramCredential,
-      });
+      await queryClient.invalidateQueries({ queryKey });
     },
   });
 
@@ -58,7 +75,7 @@ export function InstagramCredentials() {
     <details className="credentials">
       <summary>
         <span>
-          <span className="eyebrow">INSTAGRAM ACCESS</span>
+          <span className="eyebrow">{details.label.toUpperCase()} ACCESS</span>
           <strong>Authenticated session</strong>
         </span>
         <span
@@ -75,15 +92,20 @@ export function InstagramCredentials() {
       </summary>
       <div className="credentials-body">
         <p>
-          Paste an Instagram Cookie header or select a Netscape cookies.txt
-          export. The credential stays on this machine and is never returned by
-          the API.
+          Paste a {details.label} Cookie header or select a Netscape cookies.txt
+          export. It must contain{' '}
+          {PLATFORM_CREDENTIALS[platform].requiredCookies.join(' and ')}. The
+          credential stays on this machine and is never returned by the API.
         </p>
         <textarea
-          aria-label="Instagram cookies"
+          aria-label={`${details.label} cookies`}
           autoComplete="off"
-          onChange={(event) => setCookies(event.target.value)}
-          placeholder="sessionid=...; csrftoken=...; ds_user_id=..."
+          onChange={(event) => {
+            fileSelection.current += 1;
+            setFileError(undefined);
+            setCookies(event.target.value);
+          }}
+          placeholder={details.placeholder}
           spellCheck={false}
           value={cookies}
         />
@@ -109,7 +131,11 @@ export function InstagramCredentials() {
               className="danger-button"
               disabled={remove.isPending || save.isPending}
               onClick={() => {
-                if (window.confirm('Remove the stored Instagram credential?')) {
+                if (
+                  window.confirm(
+                    `Remove the stored ${details.label} credential?`,
+                  )
+                ) {
                   remove.mutate();
                 }
               }}
@@ -125,8 +151,8 @@ export function InstagramCredentials() {
           </p>
         )}
         <small>
-          Treat session cookies like a password. Logging out of Instagram or
-          changing your password can invalidate them.
+          Treat session cookies like a password. Logging out of {details.label}
+          or changing your password can invalidate them.
         </small>
       </div>
     </details>

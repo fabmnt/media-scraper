@@ -47,7 +47,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       MEDIA_ROOT: /data/media
       CREDENTIALS_ROOT: /data/credentials
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:5173}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:${WEB_PORT:-5173}}
     ports:
       - '127.0.0.1:3000:3000'
     volumes:

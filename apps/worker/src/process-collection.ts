@@ -5,7 +5,7 @@ import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import { collections, type Database } from '@media-scraper/database';
 import { extractMedia } from '@media-scraper/extractors';
 import {
-  INSTAGRAM_CREDENTIAL_FILE_NAME,
+  PLATFORM_CREDENTIALS,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
 import {
@@ -118,13 +118,14 @@ export async function processCollection(
     await mkdir(outputDirectory, { recursive: true });
     const credentialPath = resolve(
       credentialsRoot,
-      INSTAGRAM_CREDENTIAL_FILE_NAME,
+      PLATFORM_CREDENTIALS[job.platform].fileName,
     );
-    const hasCredential =
-      job.platform === 'instagram' &&
-      (await access(credentialPath)
-        .then(() => true)
-        .catch(() => false));
+    const hasCredential = await access(credentialPath)
+      .then(() => true)
+      .catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      });
     const preferredExtractor =
       job.platform === 'instagram' ? 'gallery-dl' : 'yt-dlp';
     const extractedItems = await extractMedia(job.url, outputDirectory, {

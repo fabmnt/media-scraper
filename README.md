@@ -48,10 +48,16 @@ Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resol
 
 Extraction is bounded by `MAX_ASSET_BYTES`, `MAX_COLLECTION_BYTES`, and `EXTRACTION_TIMEOUT_MS`. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
 
-## Instagram authentication
+## Platform authentication
 
-Open **Instagram access** in the gallery and either paste a Cookie request header or select a Netscape-format `cookies.txt` export. The input must contain the `sessionid` cookie. The normalized credential is stored in a private Docker volume, mounted read-only by the worker, and never returned by the API or placed in queue payloads.
+Open the relevant platform access panel in the gallery and either paste a Cookie request header or select a Netscape-format `cookies.txt` export. The input must contain the platform's authentication cookies:
 
-Treat the file as a password. Remove it from the application when it is no longer needed, and replace it after Instagram invalidates the session.
+- Instagram: `sessionid`
+- Facebook: `c_user` and `xs`
+- TikTok: `sid_tt`
+
+Each normalized credential is stored separately in a private Docker volume, mounted read-only by the worker, and never returned by the API or placed in queue payloads. A configured status only confirms that a credential is stored; platforms can invalidate sessions at any time.
+
+Treat cookie files as passwords. Remove them from the application when they are no longer needed, and replace them after logging out, changing a password, or when the platform invalidates the session.
 
 Only collect media you are authorized to access. Preserve attribution, source links, privacy, copyright, and platform terms.
