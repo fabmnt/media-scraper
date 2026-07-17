@@ -17,6 +17,7 @@ export const COLLECTION_QUEUE_NAME = 'media-collections';
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 100;
+export const MAX_PROFILE_MEDIA = 24;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
@@ -90,6 +91,40 @@ export type CreateCollectionInput = z.input<typeof createCollectionSchema>;
 export type CollectionJobPayload = z.output<typeof createCollectionSchema> & {
   collectionId: string;
 };
+
+const profileUsernameSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^@?[A-Za-z0-9._-]{1,100}$/,
+    'Enter a username using letters, numbers, dots, underscores, or hyphens',
+  )
+  .transform((username) => username.replace(/^@/, ''));
+
+export const profileLookupSchema = z.object({
+  platform: platformSchema,
+  username: profileUsernameSchema,
+});
+
+export const profileMediaSchema = z.object({
+  id: z.string().min(1),
+  platform: platformSchema,
+  sourceUrl: z.url(),
+  thumbnailUrl: z.url().nullable(),
+  caption: z.string().nullable(),
+  publishedAt: z.iso.datetime().nullable(),
+  type: mediaTypeSchema,
+  assetCount: z.number().int().positive(),
+});
+
+export const profileMediaResultsSchema = z.object({
+  items: z.array(profileMediaSchema).max(MAX_PROFILE_MEDIA),
+});
+
+export type ProfileLookupInput = z.input<typeof profileLookupSchema>;
+export type ProfileLookup = z.output<typeof profileLookupSchema>;
+export type ProfileMedia = z.infer<typeof profileMediaSchema>;
+export type ProfileMediaResults = z.infer<typeof profileMediaResultsSchema>;
 
 export const mediaAssetSchema = z.object({
   id: z.uuid(),

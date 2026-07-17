@@ -17,6 +17,7 @@ import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
+import { profileRoutes } from './routes/profiles.js';
 import { registerAuthentication } from './auth.js';
 
 type ApiError = Error & { statusCode?: number };
@@ -103,6 +104,10 @@ export async function buildApp(config: ApiConfig) {
     prefix: '/collections',
     db: database.db,
     queue,
+  });
+  await app.register(profileRoutes, {
+    prefix: '/profiles',
+    credentialsRoot: config.credentialsRoot,
   });
   await app.register(mediaRoutes, {
     prefix: '/media-items',

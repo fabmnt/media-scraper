@@ -6,6 +6,8 @@ import type {
   MediaItem,
   Page,
   Platform,
+  ProfileLookupInput,
+  ProfileMediaResults,
 } from '@media-scraper/shared';
 
 const API_URL = '/api';
@@ -67,6 +69,12 @@ export const api = {
     request<void>(`/credentials/${platform}`, { method: 'DELETE' }),
   createCollection: (input: CreateCollectionInput) =>
     request<Collection>('/collections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  discoverProfile: (input: ProfileLookupInput) =>
+    request<ProfileMediaResults>('/profiles/lookup', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),

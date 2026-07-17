@@ -1,6 +1,6 @@
 # Media Scraper
 
-A personal media archive for public Instagram, Facebook, and TikTok posts and galleries. The application uses deterministic command-line extractors (`yt-dlp`, then `gallery-dl`) and does not include browser automation.
+A personal media archive for public Instagram, Facebook, and TikTok posts and galleries. Users can paste an individual post URL or find recent media by platform and username, preview it, and queue only selected items. The application uses deterministic command-line extractors (`yt-dlp`, then `gallery-dl`) and does not include browser automation.
 
 ## Workspace
 
@@ -83,6 +83,8 @@ pnpm dev
 ```
 
 Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resolved from the workspace root so the API and worker always share the same files. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
+
+Profile discovery uses `gallery-dl` in metadata-only mode and returns at most 24 recent items. Instagram discovery includes posts and reels, TikTok includes posts, and Facebook includes profile photos. Selecting an item queues its canonical post URL through the same collection pipeline and limits as manually pasted links.
 
 Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Still images are converted to WebP with a maximum 1920px dimension; animated GIF, WebP, APNG, and other multi-frame images are preserved unchanged. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
 
