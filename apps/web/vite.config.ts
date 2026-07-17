@@ -6,7 +6,10 @@ const apiProxy = {
   [API_PATH_PREFIX]: {
     changeOrigin: true,
     rewrite: (path: string) => path.slice(API_PATH_PREFIX.length),
-    target: process.env.API_PROXY_URL ?? 'http://localhost:3000',
+    target:
+      process.env.API_PROXY_URL ||
+      process.env.VITE_API_URL ||
+      'http://localhost:3000',
   },
 };
 
