@@ -28,15 +28,13 @@ export function JobsPanel() {
     queryKey: queryKeys.activeCollections('queued'),
     queryFn: () =>
       api.listCollections({ limit: ACTIVE_JOB_LIMIT, status: 'queued' }),
-    refetchInterval: (query) =>
-      query.state.data?.items.length ? 3_000 : false,
+    refetchInterval: 3_000,
   });
   const processing = useQuery({
     queryKey: queryKeys.activeCollections('processing'),
     queryFn: () =>
       api.listCollections({ limit: ACTIVE_JOB_LIMIT, status: 'processing' }),
-    refetchInterval: (query) =>
-      query.state.data?.items.length ? 3_000 : false,
+    refetchInterval: 3_000,
   });
   const failed = useInfiniteQuery({
     queryKey: queryKeys.failedCollections,

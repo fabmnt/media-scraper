@@ -46,9 +46,21 @@ let shutdownPromise: Promise<void> | undefined;
 function shutdown() {
   shutdownPromise ??= (async () => {
     shutdownController.abort();
-    await worker.close();
-    await redis.quit();
-    await database.close();
+    const failures: unknown[] = [];
+    for (const close of [
+      () => worker.close(),
+      () => redis.quit(),
+      () => database.close(),
+    ]) {
+      try {
+        await close();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, 'One or more shutdown steps failed');
+    }
   })().catch((error: unknown) => {
     console.error('Worker shutdown failed', error);
     process.exitCode = 1;

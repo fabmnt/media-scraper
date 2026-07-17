@@ -16,6 +16,10 @@ const MAX_COMMAND_OUTPUT_BYTES = 16 * 1024 * 1024;
 const OUTPUT_CHECK_INTERVAL_MS = 1_000;
 const TERMINATION_GRACE_MS = 5_000;
 
+class TerminalExtractionError extends Error {
+  override readonly name = 'TerminalExtractionError';
+}
+
 export interface ExtractedFile {
   absolutePath: string;
   relativePath: string;
@@ -91,21 +95,37 @@ function runCommand(
     let terminalError: Error | undefined;
     let checkingOutput = false;
     let forceTermination: NodeJS.Timeout | undefined;
+    let settled = false;
 
+    const cleanup = () => {
+      clearTimeout(timeout);
+      clearInterval(outputCheck);
+      if (forceTermination) clearTimeout(forceTermination);
+      options.signal?.removeEventListener('abort', abort);
+    };
     const terminate = (error: Error) => {
-      if (terminalError) return;
-      terminalError = error;
+      if (settled || terminalError) return;
+      terminalError =
+        error instanceof TerminalExtractionError
+          ? error
+          : new TerminalExtractionError(error.message, { cause: error });
       child.kill('SIGTERM');
       forceTermination = setTimeout(
         () => child.kill('SIGKILL'),
         TERMINATION_GRACE_MS,
       );
     };
-    const abort = () => terminate(new Error(`${command} was cancelled`));
+    const abort = () =>
+      terminate(new TerminalExtractionError(`${command} was cancelled`));
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener('abort', abort, { once: true });
     const timeout = setTimeout(
-      () => terminate(new Error(`${command} exceeded the extraction timeout`)),
+      () =>
+        terminate(
+          new TerminalExtractionError(
+            `${command} exceeded the extraction timeout`,
+          ),
+        ),
       options.timeoutMs,
     );
     const outputCheck = setInterval(() => {
@@ -139,13 +159,15 @@ function runCommand(
       }
     });
     child.on('error', (error) => {
-      terminalError ??= error;
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
     });
     child.on('close', (code) => {
-      clearTimeout(timeout);
-      clearInterval(outputCheck);
-      if (forceTermination) clearTimeout(forceTermination);
-      options.signal?.removeEventListener('abort', abort);
+      if (settled) return;
+      settled = true;
+      cleanup();
       if (terminalError) {
         reject(terminalError);
         return;
@@ -330,13 +352,24 @@ export async function extractMedia(
   const fallbackName: ExtractorName =
     preferredExtractor === 'gallery-dl' ? 'yt-dlp' : 'gallery-dl';
 
+  const deadline = Date.now() + options.timeoutMs;
   try {
     return await primaryExtraction(url, outputDirectory, options);
   } catch (primaryError) {
+    if (primaryError instanceof TerminalExtractionError) throw primaryError;
+    const remainingTimeMs = deadline - Date.now();
+    if (remainingTimeMs <= 0) {
+      throw new TerminalExtractionError('Extraction deadline exceeded', {
+        cause: primaryError,
+      });
+    }
     await rm(outputDirectory, { force: true, recursive: true });
     await mkdir(outputDirectory, { recursive: true });
     try {
-      return await fallbackExtractor(url, outputDirectory, options);
+      return await fallbackExtractor(url, outputDirectory, {
+        ...options,
+        timeoutMs: remainingTimeMs,
+      });
     } catch (fallbackError) {
       const primaryMessage =
         primaryError instanceof Error

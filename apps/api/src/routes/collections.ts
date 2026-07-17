@@ -85,15 +85,21 @@ export async function collectionRoutes(
           jobOptions,
         );
       } catch (error) {
-        await db
+        const [failedCollection] = await db
           .update(collections)
           .set({
             status: 'failed',
             errorMessage: errorMessage(error),
             updatedAt: new Date(),
           })
-          .where(eq(collections.id, collection.id));
-        throw error;
+          .where(eq(collections.id, collection.id))
+          .returning();
+        return reply.code(503).send({
+          message: 'Collection could not be queued',
+          collection: failedCollection
+            ? serializeCollection(failedCollection)
+            : undefined,
+        });
       }
 
       return reply.code(202).send(serializeCollection(collection));

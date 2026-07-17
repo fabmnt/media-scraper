@@ -71,7 +71,7 @@ export async function mediaRoutes(
       .select()
       .from(mediaItems)
       .where(filters.length > 0 ? and(...filters) : undefined)
-      .orderBy(desc(mediaItems.collectedAt))
+      .orderBy(desc(mediaItems.collectedAt), asc(mediaItems.id))
       .limit(query.limit + 1)
       .offset(query.offset);
     const hasMore = rows.length > query.limit;

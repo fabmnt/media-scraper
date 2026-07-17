@@ -31,6 +31,8 @@ export const collections = pgTable(
     platform: platformEnum('platform').notNull(),
     status: collectionStatusEnum('status').notNull().default('queued'),
     errorMessage: text('error_message'),
+    claimOwner: uuid('claim_owner'),
+    claimExpiresAt: timestamp('claim_expires_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -38,7 +40,10 @@ export const collections = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index('collections_status_idx').on(table.status)],
+  (table) => [
+    index('collections_status_idx').on(table.status),
+    index('collections_claim_expires_at_idx').on(table.claimExpiresAt),
+  ],
 );
 
 export const mediaItems = pgTable(

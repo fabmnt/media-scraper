@@ -39,6 +39,7 @@ export function InstagramCredentials() {
     const selection = fileSelection.current + 1;
     fileSelection.current = selection;
     setFileError(undefined);
+    setCookies('');
     if (file.size > MAX_CREDENTIAL_LENGTH) {
       setFileError('Cookie file is too large');
       return;

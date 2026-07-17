@@ -21,6 +21,24 @@ import { registerAuthentication } from './auth.js';
 type ApiError = Error & { statusCode?: number };
 
 const ALLOWED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('Health check timed out')),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 interface ApiConfig {
   accessToken: string;
@@ -91,7 +109,10 @@ export async function buildApp(config: ApiConfig) {
 
   app.get('/health', async (_request, reply) => {
     try {
-      await Promise.all([database.db.execute(sql`select 1`), redis.ping()]);
+      await Promise.all([
+        database.db.execute(sql`select 1`),
+        withTimeout(redis.ping(), HEALTH_CHECK_TIMEOUT_MS),
+      ]);
       return { status: 'ok' };
     } catch (error) {
       app.log.error(error, 'Health check failed');

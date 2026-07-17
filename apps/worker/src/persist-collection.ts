@@ -14,6 +14,7 @@ export async function persistCollection(
   job: CollectionJobPayload,
   preparedItems: PreparedMedia[],
   mediaRoot: string,
+  claimOwner: string,
 ) {
   return db.transaction(async (transaction) => {
     const retainedPaths = new Set<string>();
@@ -26,7 +27,10 @@ export async function persistCollection(
         contentHashes.length === 0
           ? []
           : await transaction
-              .select({ contentHash: mediaAssets.contentHash })
+              .select({
+                contentHash: mediaAssets.contentHash,
+                mediaItemId: mediaAssets.mediaItemId,
+              })
               .from(mediaAssets)
               .innerJoin(mediaItems, eq(mediaAssets.mediaItemId, mediaItems.id))
               .where(
@@ -38,12 +42,17 @@ export async function persistCollection(
                   ),
                 ),
               );
-      const duplicateHashes = new Set(
-        duplicateAssets.map((asset) => asset.contentHash),
-      );
+      const hashesByMediaItem = new Map<string, Set<string>>();
+      for (const asset of duplicateAssets) {
+        const hashes = hashesByMediaItem.get(asset.mediaItemId) ?? new Set();
+        hashes.add(asset.contentHash);
+        hashesByMediaItem.set(asset.mediaItemId, hashes);
+      }
       if (
         contentHashes.length > 0 &&
-        contentHashes.every((hash) => duplicateHashes.has(hash))
+        [...hashesByMediaItem.values()].some((hashes) =>
+          contentHashes.every((hash) => hashes.has(hash)),
+        )
       ) {
         continue;
       }
@@ -98,10 +107,23 @@ export async function persistCollection(
       }
       obsoletePaths.push(...previousAssets.map((asset) => asset.relativePath));
     }
-    await transaction
+    const [completedCollection] = await transaction
       .update(collections)
-      .set({ status: 'completed', errorMessage: null, updatedAt: new Date() })
-      .where(eq(collections.id, job.collectionId));
+      .set({
+        status: 'completed',
+        errorMessage: null,
+        claimOwner: null,
+        claimExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(collections.id, job.collectionId),
+          eq(collections.claimOwner, claimOwner),
+        ),
+      )
+      .returning({ id: collections.id });
+    if (!completedCollection) throw new Error('Collection claim was lost');
     return { retainedPaths, obsoletePaths };
   });
 }

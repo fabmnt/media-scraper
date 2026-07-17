@@ -14,20 +14,29 @@ export type PreparedMedia = Omit<ExtractedMedia, 'files'> & {
 async function mapWithConcurrency<T, R>(
   values: readonly T[],
   concurrency: number,
+  signal: AbortSignal,
   operation: (value: T) => Promise<R>,
 ) {
   const results = new Array<R>(values.length);
   let nextIndex = 0;
+  let failure: unknown;
   await Promise.all(
     Array.from({ length: Math.min(concurrency, values.length) }, async () => {
-      while (nextIndex < values.length) {
+      while (nextIndex < values.length && !signal.aborted && !failure) {
         const index = nextIndex;
         nextIndex += 1;
         const value = values[index];
-        if (value !== undefined) results[index] = await operation(value);
+        if (value === undefined) continue;
+        try {
+          results[index] = await operation(value);
+        } catch (error) {
+          failure = error;
+        }
       }
     }),
   );
+  if (failure) throw failure;
+  signal.throwIfAborted();
   return results;
 }
 
@@ -37,10 +46,12 @@ export async function prepareMedia(
     maxAssetBytes,
     maxCollectionBytes,
     metadataConcurrency,
+    signal,
   }: {
     maxAssetBytes: number;
     maxCollectionBytes: number;
     metadataConcurrency: number;
+    signal: AbortSignal;
   },
 ): Promise<PreparedMedia[]> {
   const allFiles = extractedItems.flatMap((item) => item.files);
@@ -48,6 +59,7 @@ export async function prepareMedia(
     await mapWithConcurrency(
       allFiles,
       metadataConcurrency,
+      signal,
       async (file) =>
         [file.absolutePath, await readFileMetadata(file.absolutePath)] as const,
     ),
