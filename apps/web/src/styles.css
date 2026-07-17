@@ -919,7 +919,7 @@ button:disabled {
     padding: 80px 0;
   }
   .dashboard-tabs {
-    grid-template-columns: repeat(4, minmax(110px, 1fr));
+    grid-template-columns: repeat(3, minmax(110px, 1fr));
     overflow-x: auto;
   }
   .dashboard-tabs button {
