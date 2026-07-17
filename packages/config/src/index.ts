@@ -33,7 +33,9 @@ const commonEnvironmentSchema = z.object({
 const apiEnvironmentSchema = commonEnvironmentSchema.extend({
   API_ACCESS_TOKEN: z.string().min(32),
   API_HOST: z.string().min(1).default('0.0.0.0'),
-  API_PORT: positiveInteger.default(3000),
+  // Railway injects PORT at runtime. Keep API_PORT available for local Docker
+  // development, but prefer PORT when API_PORT is not explicitly configured.
+  API_PORT: positiveInteger.optional(),
   COOKIE_SECURE: z.stringbool().default(false),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
 });
@@ -59,7 +61,12 @@ function resolveCommonPaths<
   };
 }
 
-export const loadApiConfig = () =>
-  resolveCommonPaths(apiEnvironmentSchema.parse(process.env));
+export const loadApiConfig = () => {
+  const config = apiEnvironmentSchema.parse(process.env);
+  return resolveCommonPaths({
+    ...config,
+    API_PORT: config.API_PORT ?? Number(process.env.PORT ?? 3000),
+  });
+};
 export const loadWorkerConfig = () =>
   resolveCommonPaths(workerEnvironmentSchema.parse(process.env));

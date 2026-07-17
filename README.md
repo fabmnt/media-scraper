@@ -21,6 +21,37 @@ A personal media archive for public Instagram, Facebook, and TikTok posts and ga
 
 The Docker setup provisions all runtime dependencies automatically.
 
+## Deploy to Railway
+
+Railway should be configured as four services in one project:
+
+- `backend` — deploys the repository root with the default `Dockerfile`. The final image runs both the API and worker, which lets them share one persistent volume.
+- `web` — deploys the repository root with `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`.
+- `Postgres` — add Railway's managed PostgreSQL service.
+- `Redis` — add Railway's managed Redis service.
+
+Create the database services first, then configure the backend variables. Use Railway reference variables for the service names if you choose different names:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+API_ACCESS_TOKEN=<a random value of at least 32 characters>
+API_HOST=0.0.0.0
+COOKIE_SECURE=true
+# Use http://localhost:5173 until the web service has a generated domain.
+WEB_ORIGIN=http://localhost:5173
+MEDIA_ROOT=/data/media
+CREDENTIALS_ROOT=/data/credentials
+```
+
+Set the backend service's pre-deploy command to `pnpm db:migrate`, healthcheck path to `/health`, attach a Railway volume mounted at `/data`, and generate its public domain. Do not scale this volume-backed service horizontally.
+
+On the `web` service, set `VITE_API_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}`, set `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`, and generate a public domain. Because Vite embeds this URL at build time, the backend domain must exist before the web service is built. Finally, change the backend's `WEB_ORIGIN` to `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` and redeploy it. Railway provides `PORT` automatically; the API and web preview are configured to listen on it.
+
+Railway's private networking supplies the database and Redis connections through the reference variables. The `/data` volume is required: without it, downloaded media and stored platform credentials are lost when the backend redeploys.
+
+You can connect the GitHub repository to both application services so pushes to the selected branch redeploy them automatically. Set watch paths if desired; changes under `packages/**` should trigger both services.
+
 ## Start with Docker
 
 ```bash
