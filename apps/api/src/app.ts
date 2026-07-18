@@ -10,10 +10,13 @@ import { ZodError } from 'zod';
 import { sql } from 'drizzle-orm';
 import { createDatabase } from '@media-scraper/database';
 import {
+  AUTOMATIC_PROFILE_QUEUE_NAME,
   COLLECTION_QUEUE_NAME,
+  type AutomaticProfileJobPayload,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
 import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
+import { automaticProfileRoutes } from './routes/automatic-profiles.js';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
@@ -22,7 +25,14 @@ import { registerAuthentication } from './auth.js';
 
 type ApiError = Error & { statusCode?: number };
 
-const ALLOWED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+const ALLOWED_HTTP_METHODS = [
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
 const DATASTORE_CONNECT_TIMEOUT_MS = 5_000;
 const DATASTORE_COMMAND_TIMEOUT_MS = 5_000;
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
@@ -71,7 +81,14 @@ export async function buildApp(config: ApiConfig) {
   const queue = new Queue<CollectionJobPayload>(COLLECTION_QUEUE_NAME, {
     connection: redis,
   });
+  const automaticProfileQueue = new Queue<AutomaticProfileJobPayload>(
+    AUTOMATIC_PROFILE_QUEUE_NAME,
+    { connection: redis },
+  );
   queue.on('error', (error) => app.log.error(error, 'Collection queue error'));
+  automaticProfileQueue.on('error', (error) =>
+    app.log.error(error, 'Automatic profile queue error'),
+  );
 
   app.setErrorHandler<ApiError>((error, request, reply) => {
     if (error instanceof ZodError) {
@@ -115,6 +132,11 @@ export async function buildApp(config: ApiConfig) {
     db: database.db,
     queue,
   });
+  await app.register(automaticProfileRoutes, {
+    prefix: '/automatic-profiles',
+    db: database.db,
+    queue: automaticProfileQueue,
+  });
   await app.register(profileRoutes, {
     prefix: '/profiles',
     cacheTtlSeconds: config.profileDiscoveryCacheTtlSeconds,
@@ -141,7 +163,7 @@ export async function buildApp(config: ApiConfig) {
     }
   });
   app.addHook('onClose', async () => {
-    await queue.close();
+    await Promise.all([queue.close(), automaticProfileQueue.close()]);
     await redis.quit();
     await database.close();
     storage.close();

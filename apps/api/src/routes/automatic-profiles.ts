@@ -1,0 +1,187 @@
+import type { FastifyInstance } from 'fastify';
+import type { Queue } from 'bullmq';
+import { and, asc, eq } from 'drizzle-orm';
+import { z } from 'zod';
+import {
+  createAutomaticProfileSchema,
+  updateAutomaticProfileSchema,
+  type AutomaticProfileJobPayload,
+} from '@media-scraper/shared';
+import { automaticProfiles, type Database } from '@media-scraper/database';
+import {
+  queueAutomaticProfileCheck,
+  removeAutomaticProfileScheduler,
+  upsertAutomaticProfileScheduler,
+} from '../automatic-profile-scheduler.js';
+import { serializeAutomaticProfile } from '../serialization.js';
+
+interface AutomaticProfileRoutesOptions {
+  db: Database;
+  queue: Queue<AutomaticProfileJobPayload>;
+}
+
+const automaticProfileParamsSchema = z.object({ id: z.uuid() });
+
+class AutomaticProfileConflictError extends Error {
+  readonly statusCode = 409;
+}
+
+class AutomaticProfileQueueError extends Error {
+  readonly statusCode = 503;
+}
+
+function isUniqueViolation(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505'
+  );
+}
+
+export async function automaticProfileRoutes(
+  app: FastifyInstance,
+  { db, queue }: AutomaticProfileRoutesOptions,
+) {
+  app.get('/', async () => {
+    const profiles = await db
+      .select()
+      .from(automaticProfiles)
+      .orderBy(asc(automaticProfiles.createdAt));
+    return profiles.map(serializeAutomaticProfile);
+  });
+
+  app.post('/', async (request, reply) => {
+    const input = createAutomaticProfileSchema.parse(request.body);
+    let profile: typeof automaticProfiles.$inferSelect;
+    try {
+      const [createdProfile] = await db
+        .insert(automaticProfiles)
+        .values(input)
+        .returning();
+      if (!createdProfile)
+        throw new Error('Failed to create automatic profile');
+      profile = createdProfile;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new AutomaticProfileConflictError(
+          'Automatic collection is already configured for this profile',
+        );
+      }
+      throw error;
+    }
+
+    try {
+      const nextCheckAt = await upsertAutomaticProfileScheduler(
+        queue,
+        profile,
+        true,
+      );
+      const [scheduledProfile] = await db
+        .update(automaticProfiles)
+        .set({ nextCheckAt, updatedAt: new Date() })
+        .where(eq(automaticProfiles.id, profile.id))
+        .returning();
+      profile = scheduledProfile ?? profile;
+    } catch (error) {
+      request.log.error(error, 'Could not schedule automatic profile');
+      throw new AutomaticProfileQueueError(
+        'Automatic collection was saved but could not be scheduled',
+      );
+    }
+
+    return reply.code(201).send(serializeAutomaticProfile(profile));
+  });
+
+  app.patch('/:id', async (request) => {
+    const { id } = automaticProfileParamsSchema.parse(request.params);
+    const input = updateAutomaticProfileSchema.parse(request.body);
+    const [profile] = await db
+      .update(automaticProfiles)
+      .set({
+        ...input,
+        ...(input.enabled === true || input.intervalMinutes !== undefined
+          ? { lastError: null, retryAt: null }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(automaticProfiles.id, id))
+      .returning();
+    if (!profile) {
+      const error = new Error('Automatic profile not found');
+      Object.assign(error, { statusCode: 404 });
+      throw error;
+    }
+
+    try {
+      const nextCheckAt = profile.enabled
+        ? await upsertAutomaticProfileScheduler(queue, profile)
+        : null;
+      if (!profile.enabled) {
+        await removeAutomaticProfileScheduler(queue, profile.id);
+      }
+      const [scheduledProfile] = await db
+        .update(automaticProfiles)
+        .set({ nextCheckAt, updatedAt: new Date() })
+        .where(eq(automaticProfiles.id, profile.id))
+        .returning();
+      return serializeAutomaticProfile(scheduledProfile ?? profile);
+    } catch (error) {
+      request.log.error(error, 'Could not update automatic profile schedule');
+      throw new AutomaticProfileQueueError(
+        'Automatic collection settings were saved but the schedule could not be updated',
+      );
+    }
+  });
+
+  app.delete('/:id', async (request, reply) => {
+    const { id } = automaticProfileParamsSchema.parse(request.params);
+    const [profile] = await db
+      .update(automaticProfiles)
+      .set({ enabled: false, nextCheckAt: null, updatedAt: new Date() })
+      .where(eq(automaticProfiles.id, id))
+      .returning({ id: automaticProfiles.id });
+    if (!profile) {
+      return reply.code(404).send({ message: 'Automatic profile not found' });
+    }
+    try {
+      await removeAutomaticProfileScheduler(queue, profile.id);
+    } catch (error) {
+      request.log.error(error, 'Could not remove automatic profile schedule');
+      throw new AutomaticProfileQueueError(
+        'Automatic collection could not be removed. Try again shortly.',
+      );
+    }
+    const [deletedProfile] = await db
+      .delete(automaticProfiles)
+      .where(eq(automaticProfiles.id, profile.id))
+      .returning({ id: automaticProfiles.id });
+    return deletedProfile
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Automatic profile not found' });
+  });
+
+  app.post('/:id/run', async (request, reply) => {
+    const { id } = automaticProfileParamsSchema.parse(request.params);
+    const [profile] = await db
+      .select({ id: automaticProfiles.id })
+      .from(automaticProfiles)
+      .where(
+        and(eq(automaticProfiles.id, id), eq(automaticProfiles.enabled, true)),
+      );
+    if (!profile) {
+      return reply
+        .code(404)
+        .send({ message: 'Enabled automatic profile not found' });
+    }
+    try {
+      await queueAutomaticProfileCheck(queue, profile.id, true);
+    } catch (error) {
+      request.log.error(error, 'Could not queue automatic profile check');
+      throw new AutomaticProfileQueueError(
+        'Automatic profile check could not be queued',
+      );
+    }
+    return reply.code(202).send({ queued: true });
+  });
+}

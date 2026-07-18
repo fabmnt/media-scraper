@@ -1,6 +1,8 @@
 import type {
+  AutomaticProfile,
   Collection,
   CollectionStatus,
+  CreateAutomaticProfileInput,
   CredentialStatus,
   CreateCollectionBatchInput,
   CreateCollectionInput,
@@ -10,6 +12,7 @@ import type {
   Platform,
   ProfileLookupInput,
   ProfileMediaResults,
+  UpdateAutomaticProfileInput,
 } from '@media-scraper/shared';
 
 const API_URL = '/api';
@@ -86,6 +89,26 @@ export const api = {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
+    }),
+  listAutomaticProfiles: () =>
+    request<AutomaticProfile[]>('/automatic-profiles'),
+  createAutomaticProfile: (input: CreateAutomaticProfileInput) =>
+    request<AutomaticProfile>('/automatic-profiles', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  updateAutomaticProfile: (id: string, input: UpdateAutomaticProfileInput) =>
+    request<AutomaticProfile>(`/automatic-profiles/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  deleteAutomaticProfile: (id: string) =>
+    request<void>(`/automatic-profiles/${id}`, { method: 'DELETE' }),
+  runAutomaticProfile: (id: string) =>
+    request<{ queued: true }>(`/automatic-profiles/${id}/run`, {
+      method: 'POST',
     }),
   listCollections: ({
     limit,

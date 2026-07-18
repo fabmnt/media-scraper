@@ -50,6 +50,13 @@
       "when": 1784353600757,
       "tag": "0006_purple_mentor",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784404603731,
+      "tag": "0007_curious_paladin",
+      "breakpoints": true
     }
   ]
 }

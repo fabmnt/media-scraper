@@ -122,7 +122,10 @@ export function JobsPanel() {
           <article className="job" key={job.id}>
             <span className={`status status-${job.status}`}>{job.status}</span>
             <div>
-              <strong>{job.platform}</strong>
+              <strong>
+                {job.platform}
+                {job.origin === 'automatic' ? ' · automatic' : ''}
+              </strong>
               <a href={job.sourceUrl} rel="noreferrer" target="_blank">
                 {job.sourceUrl}
               </a>
