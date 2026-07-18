@@ -7,6 +7,7 @@ export const COLLECTION_STATUSES = [
   'completed',
   'failed',
 ] as const;
+export const COLLECTION_ORIGINS = ['manual', 'automatic'] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const MEDIA_GROUP_MODES = ['none', 'username', 'platform'] as const;
 export const MEDIA_MAINTENANCE_TYPES = [
@@ -15,6 +16,21 @@ export const MEDIA_MAINTENANCE_TYPES = [
   'enforce_retention',
 ] as const;
 export const COLLECTION_QUEUE_NAME = 'media-collections';
+export const AUTOMATIC_PROFILE_QUEUE_NAME = 'automatic-profile-polls';
+export const AUTOMATIC_PROFILE_JOB_NAME = 'check-profile';
+export const AUTOMATIC_PROFILE_SCHEDULER_PREFIX = 'automatic-profile:';
+export const MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES = 15;
+export const MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES = 7 * 24 * 60;
+export const AUTOMATIC_COLLECTION_INTERVAL_OPTIONS = [
+  { label: '15 minutes', minutes: 15 },
+  { label: '30 minutes', minutes: 30 },
+  { label: '1 hour', minutes: 60 },
+  { label: '3 hours', minutes: 3 * 60 },
+  { label: '6 hours', minutes: 6 * 60 },
+  { label: '12 hours', minutes: 12 * 60 },
+  { label: '1 day', minutes: 24 * 60 },
+  { label: '7 days', minutes: 7 * 24 * 60 },
+] as const;
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
 export const MEDIA_LIBRARY_PAGE_SIZE = 18;
@@ -24,15 +40,32 @@ export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA;
 export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
 export const MAX_PROFILE_SOURCE_CURSOR_LENGTH = MAX_PROFILE_CURSOR_LENGTH * 4;
 export const MAX_COLLECTION_BATCH_SIZE = 100;
+export const COLLECTION_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5_000 },
+  removeOnComplete: { count: 1_000 },
+  removeOnFail: { count: 1_000 },
+};
+export const AUTOMATIC_PROFILE_JOB_OPTIONS = {
+  attempts: 1,
+  removeOnComplete: { count: 1_000 },
+  removeOnFail: { count: 1_000 },
+};
+
+export function automaticProfileSchedulerId(profileId: string) {
+  return `${AUTOMATIC_PROFILE_SCHEDULER_PREFIX}${profileId}`;
+}
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
+export const collectionOriginSchema = z.enum(COLLECTION_ORIGINS);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
 export const mediaGroupModeSchema = z.enum(MEDIA_GROUP_MODES);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
+export type CollectionOrigin = z.infer<typeof collectionOriginSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
 export type MediaGroupMode = z.infer<typeof mediaGroupModeSchema>;
 export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
@@ -114,7 +147,13 @@ const profileUsernameSchema = z
     /^@?[A-Za-z0-9._-]{1,100}$/,
     'Enter a username using letters, numbers, dots, underscores, or hyphens',
   )
-  .transform((username) => username.replace(/^@/, ''));
+  .transform((username) => username.replace(/^@/, '').toLowerCase());
+
+const automaticCollectionIntervalSchema = z.coerce
+  .number()
+  .int()
+  .min(MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES)
+  .max(MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES);
 
 export const profileLookupSchema = z.object({
   platform: platformSchema,
@@ -142,6 +181,50 @@ export type ProfileLookupInput = z.input<typeof profileLookupSchema>;
 export type ProfileLookup = z.output<typeof profileLookupSchema>;
 export type ProfileMedia = z.infer<typeof profileMediaSchema>;
 export type ProfileMediaResults = z.infer<typeof profileMediaResultsSchema>;
+
+export const createAutomaticProfileSchema = z.object({
+  platform: platformSchema,
+  username: profileUsernameSchema,
+  intervalMinutes: automaticCollectionIntervalSchema,
+});
+
+export const updateAutomaticProfileSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    intervalMinutes: automaticCollectionIntervalSchema.optional(),
+  })
+  .refine(
+    (input) =>
+      input.enabled !== undefined || input.intervalMinutes !== undefined,
+    'At least one automatic profile setting is required',
+  );
+
+export const automaticProfileSchema = z.object({
+  id: z.uuid(),
+  platform: platformSchema,
+  username: z.string(),
+  intervalMinutes: automaticCollectionIntervalSchema,
+  enabled: z.boolean(),
+  lastCheckedAt: z.iso.datetime().nullable(),
+  lastSuccessAt: z.iso.datetime().nullable(),
+  nextCheckAt: z.iso.datetime().nullable(),
+  lastError: z.string().nullable(),
+  consecutiveFailures: z.number().int().nonnegative(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export type CreateAutomaticProfileInput = z.input<
+  typeof createAutomaticProfileSchema
+>;
+export type UpdateAutomaticProfileInput = z.input<
+  typeof updateAutomaticProfileSchema
+>;
+export type AutomaticProfile = z.infer<typeof automaticProfileSchema>;
+export interface AutomaticProfileJobPayload {
+  profileId: string;
+  force?: boolean;
+}
 
 export const mediaAssetSchema = z.object({
   id: z.uuid(),
@@ -173,6 +256,7 @@ export const collectionSchema = z.object({
   sourceUrl: z.url(),
   platform: platformSchema,
   status: collectionStatusSchema,
+  origin: collectionOriginSchema,
   errorMessage: z.string().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

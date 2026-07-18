@@ -5,6 +5,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   collectionStatusSchema,
+  COLLECTION_JOB_OPTIONS,
   COLLECTION_QUEUE_NAME,
   createCollectionBatchSchema,
   createCollectionSchema,
@@ -23,7 +24,6 @@ interface CollectionRoutesOptions {
 }
 
 const MAX_ERROR_LENGTH = 4_000;
-const RETAINED_JOB_COUNT = 1_000;
 const collectionQuerySchema = z.object({
   limit: z.coerce
     .number()
@@ -35,13 +35,6 @@ const collectionQuerySchema = z.object({
   status: collectionStatusSchema.optional(),
 });
 const collectionParamsSchema = z.object({ id: z.uuid() });
-const jobOptions = {
-  attempts: 3,
-  backoff: { type: 'exponential' as const, delay: 5_000 },
-  removeOnComplete: { count: RETAINED_JOB_COUNT },
-  removeOnFail: { count: RETAINED_JOB_COUNT },
-};
-
 function errorMessage(error: unknown) {
   return (error instanceof Error ? error.message : 'Queue unavailable').slice(
     0,
@@ -91,7 +84,7 @@ export async function collectionRoutes(
           platform: collection.platform,
           url: collection.sourceUrl,
         },
-        opts: { ...jobOptions, jobId: collection.id },
+        opts: { ...COLLECTION_JOB_OPTIONS, jobId: collection.id },
       }));
       try {
         await queue.addBulk(jobs);
@@ -159,7 +152,7 @@ export async function collectionRoutes(
         await queue.add(
           COLLECTION_QUEUE_NAME,
           { ...input, collectionId: collection.id },
-          { ...jobOptions, jobId: collection.id },
+          { ...COLLECTION_JOB_OPTIONS, jobId: collection.id },
         );
       } catch (error) {
         const [failedCollection] = await db
@@ -224,7 +217,7 @@ export async function collectionRoutes(
             platform: collection.platform,
             url: collection.sourceUrl,
           },
-          { ...jobOptions, jobId: collection.id },
+          { ...COLLECTION_JOB_OPTIONS, jobId: collection.id },
         );
       }
     } catch (error) {

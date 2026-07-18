@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   check,
   index,
   integer,
@@ -13,9 +14,12 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import {
+  COLLECTION_ORIGINS,
   COLLECTION_STATUSES,
+  MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MEDIA_MAINTENANCE_TYPES,
   MEDIA_TYPES,
+  MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   SUPPORTED_PLATFORMS,
 } from '@media-scraper/shared';
 
@@ -24,10 +28,48 @@ export const collectionStatusEnum = pgEnum(
   'collection_status',
   COLLECTION_STATUSES,
 );
+export const collectionOriginEnum = pgEnum(
+  'collection_origin',
+  COLLECTION_ORIGINS,
+);
 export const mediaTypeEnum = pgEnum('media_type', MEDIA_TYPES);
 export const mediaMaintenanceTypeEnum = pgEnum(
   'media_maintenance_type',
   MEDIA_MAINTENANCE_TYPES,
+);
+
+export const automaticProfiles = pgTable(
+  'automatic_profiles',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    platform: platformEnum('platform').notNull(),
+    username: text('username').notNull(),
+    intervalMinutes: integer('interval_minutes').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    nextCheckAt: timestamp('next_check_at', { withTimezone: true }),
+    retryAt: timestamp('retry_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    consecutiveFailures: integer('consecutive_failures').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      'automatic_profiles_interval_check',
+      sql`${table.intervalMinutes} between ${sql.raw(String(MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES))} and ${sql.raw(String(MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES))}`,
+    ),
+    uniqueIndex('automatic_profiles_platform_username_idx').on(
+      table.platform,
+      table.username,
+    ),
+    index('automatic_profiles_enabled_idx').on(table.enabled),
+  ],
 );
 
 export const collections = pgTable(
@@ -37,6 +79,12 @@ export const collections = pgTable(
     sourceUrl: text('source_url').notNull(),
     platform: platformEnum('platform').notNull(),
     status: collectionStatusEnum('status').notNull().default('queued'),
+    origin: collectionOriginEnum('origin').notNull().default('manual'),
+    automaticProfileId: uuid('automatic_profile_id').references(
+      () => automaticProfiles.id,
+      { onDelete: 'set null' },
+    ),
+    discoveredSourceId: text('discovered_source_id'),
     errorMessage: text('error_message'),
     claimOwner: uuid('claim_owner'),
     claimExpiresAt: timestamp('claim_expires_at', { withTimezone: true }),
@@ -50,6 +98,10 @@ export const collections = pgTable(
   (table) => [
     index('collections_status_idx').on(table.status),
     index('collections_claim_expires_at_idx').on(table.claimExpiresAt),
+    index('collections_automatic_profile_idx').on(table.automaticProfileId),
+    uniqueIndex('collections_discovered_source_idx')
+      .on(table.platform, table.discoveredSourceId)
+      .where(sql`${table.discoveredSourceId} is not null`),
   ],
 );
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { SUPPORTED_PLATFORMS } from '@media-scraper/shared';
 import { api } from '../api';
+import { AutomaticCollectionsPanel } from './AutomaticCollectionsPanel';
 import { CollectionForm } from './CollectionForm';
 import { Gallery } from './Gallery';
 import { PlatformCredentials } from './PlatformCredentials';
@@ -128,6 +129,7 @@ export function Dashboard() {
             ))}
           {activeTab === 'get-media' && (
             <div className="get-media">
+              <AutomaticCollectionsPanel />
               <ProfileCollectionForm />
               <CollectionForm />
               <JobsPanel />
