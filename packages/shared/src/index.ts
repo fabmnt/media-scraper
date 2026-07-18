@@ -34,7 +34,7 @@ export const AUTOMATIC_COLLECTION_INTERVAL_OPTIONS = [
 ] as const;
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
-export const MEDIA_LIBRARY_PAGE_SIZE = 18;
+export const MEDIA_LIBRARY_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
 export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA;
