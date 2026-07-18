@@ -459,33 +459,38 @@ export async function discoverProfileMedia(
     signal,
   );
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
-  const extractionErrors: Error[] = [];
-  const sourcePages: Array<Array<ProfileMedia | undefined>> = [];
-
-  for (const [index, source] of profile.sources.entries()) {
-    try {
-      const messages = await extractProfileSource(
-        platform,
-        source.url,
-        continuation.sources[index]?.offset ?? 0,
-        authenticationArguments,
-        signal,
-      );
-      for (const message of messages) {
-        if (message[0] === GALLERY_ERROR_MESSAGE) {
-          extractionErrors.push(new Error(message[1].message));
-        }
+  const sourceResults = await Promise.all(
+    profile.sources.map(async (source, index) => {
+      try {
+        const messages = await extractProfileSource(
+          platform,
+          source.url,
+          continuation.sources[index]?.offset ?? 0,
+          authenticationArguments,
+          signal,
+        );
+        return {
+          entries: normalizeSourcePage(messages, source, platform, username),
+          errors: messages.flatMap((message) =>
+            message[0] === GALLERY_ERROR_MESSAGE
+              ? [new Error(message[1].message)]
+              : [],
+          ),
+        };
+      } catch (error) {
+        return {
+          entries: [],
+          errors: [
+            error instanceof Error
+              ? error
+              : new Error('Profile extraction failed'),
+          ],
+        };
       }
-      sourcePages.push(
-        normalizeSourcePage(messages, source, platform, username),
-      );
-    } catch (error) {
-      extractionErrors.push(
-        error instanceof Error ? error : new Error('Profile extraction failed'),
-      );
-      sourcePages.push([]);
-    }
-  }
+    }),
+  );
+  const sourcePages = sourceResults.map((result) => result.entries);
+  const extractionErrors = sourceResults.flatMap((result) => result.errors);
 
   const candidates = new Map<string, ProfileMedia>();
   for (const [index, entries] of sourcePages.entries()) {
