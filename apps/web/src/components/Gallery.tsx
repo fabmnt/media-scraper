@@ -75,7 +75,7 @@ export function Gallery() {
     }) =>
       api.listMedia({
         groupBy: groupMode,
-        groupKey,
+        ...(groupMode === 'none' ? {} : { groupKey }),
         limit: MEDIA_LIBRARY_PAGE_SIZE,
         offset,
         platform,
