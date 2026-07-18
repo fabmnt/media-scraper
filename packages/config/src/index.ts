@@ -95,7 +95,7 @@ function validateStorageEnvironment(
 
 const apiEnvironmentSchema = commonEnvironmentSchema
   .extend({
-    API_ACCESS_TOKEN: z.string().min(32),
+    API_ACCESS_TOKEN: z.string().min(1),
     API_HOST: z.string().min(1).default('0.0.0.0'),
     // Railway injects PORT at runtime. Keep API_PORT available for local Docker
     // development, but prefer PORT when API_PORT is not explicitly configured.

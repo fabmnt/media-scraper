@@ -35,7 +35,7 @@ Create the database services first, then configure the backend variables. Use Ra
 ```text
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
-API_ACCESS_TOKEN=<a random value of at least 32 characters>
+API_ACCESS_TOKEN=<your access password>
 API_HOST=0.0.0.0
 COOKIE_SECURE=true
 PROFILE_DISCOVERY_TIMEOUT_MS=45000
@@ -66,7 +66,7 @@ You can connect the GitHub repository to both application services so pushes to 
 
 ```bash
 cp .env.example .env
-# Set API_ACCESS_TOKEN in .env, for example with: openssl rand -hex 32
+# Set API_ACCESS_TOKEN in .env to any non-empty password.
 docker compose up --build
 ```
 
