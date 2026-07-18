@@ -30,15 +30,13 @@ export async function profileRoutes(
       reply.raw.once('close', abortDiscovery);
 
       try {
-        return {
-          items: await discoverProfileMedia(
-            input,
-            hasCredential
-              ? platformCredentialPath(credentialsRoot, input.platform)
-              : undefined,
-            abortController.signal,
-          ),
-        };
+        return await discoverProfileMedia(
+          input,
+          hasCredential
+            ? platformCredentialPath(credentialsRoot, input.platform)
+            : undefined,
+          abortController.signal,
+        );
       } catch (error) {
         request.log.warn(error, 'Profile discovery failed');
         return reply.code(502).send({
