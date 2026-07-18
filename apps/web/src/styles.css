@@ -87,7 +87,7 @@ footer {
 .eyebrow,
 .section-index,
 .library-count,
-.group-heading span {
+.group-item-count {
   color: var(--accent);
   font:
     500 10px 'DM Mono',
@@ -711,7 +711,7 @@ button:disabled {
 }
 .library-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 180px 200px;
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(140px, 200px));
   gap: 8px;
   margin-bottom: 30px;
   padding: 12px;
@@ -723,20 +723,41 @@ button:disabled {
   gap: 48px;
 }
 .group-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
+  margin: 0 0 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
 }
-.group-heading h3 {
-  margin: 0;
+.group-toggle {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 22px;
   letter-spacing: -0.03em;
 }
-.group-heading span {
+.group-item-count {
   color: var(--muted);
+}
+.group-toggle-icon {
+  width: 20px;
+  color: var(--muted);
+  text-align: center;
+}
+.group-toggle:hover .group-label,
+.group-toggle:focus-visible .group-label {
+  color: var(--accent);
 }
 .media-grid {
   display: grid;

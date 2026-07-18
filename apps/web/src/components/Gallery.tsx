@@ -31,6 +31,9 @@ interface LoadedGroupPages {
 export function Gallery() {
   const [platform, setPlatform] = useState<Platform | undefined>();
   const [groupMode, setGroupMode] = useState<MediaGroupMode>('none');
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
   const [sortBy, setSortBy] = useState<MediaSort>('collectedAt');
   const [previewItemId, setPreviewItemId] = useState<string>();
   const [search, setSearch] = useState('');
@@ -323,41 +326,68 @@ export function Gallery() {
         )}
         <div className="media-groups">
           {groups.map((group) => {
+            const isGrouped = effectiveGroupMode !== 'none';
+            const isCollapsed =
+              isGrouped && Boolean(collapsedGroups[group.key]);
             const isLoadingGroup =
               loadMore.isPending && loadMore.variables?.groupKey === group.key;
+            const groupContentId = `media-group-${group.key}`;
             return (
               <section className="media-group" key={group.key}>
-                {effectiveGroupMode !== 'none' && (
-                  <div className="group-heading">
-                    <h3>{group.label}</h3>
-                    <span>{group.items.length}</span>
-                  </div>
-                )}
-                <div className="media-grid">
-                  {group.items.map((item) => (
-                    <MediaCard
-                      deleteDisabled={remove.isPending}
-                      isDeleting={
-                        remove.isPending && remove.variables === item.id
+                {isGrouped && (
+                  <h3 className="group-heading">
+                    <button
+                      aria-controls={groupContentId}
+                      aria-expanded={!isCollapsed}
+                      className="group-toggle"
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({
+                          ...current,
+                          [group.key]: !current[group.key],
+                        }))
                       }
-                      item={item}
-                      key={item.id}
-                      onDelete={() => deleteItem(item)}
-                      onPreview={() => setPreviewItemId(item.id)}
-                      previewOpen={Boolean(previewItemId)}
-                    />
-                  ))}
-                </div>
-                {group.nextOffset !== null && (
-                  <button
-                    className="load-more-button"
-                    disabled={loadMore.isPending}
-                    onClick={() => loadGroup(group)}
-                    type="button"
-                  >
-                    {isLoadingGroup ? 'Loading…' : 'Load more'}
-                  </button>
+                      type="button"
+                    >
+                      <span className="group-label">{group.label}</span>
+                      <span className="group-item-count">
+                        {group.items.length}
+                      </span>
+                      <span aria-hidden="true" className="group-toggle-icon">
+                        {isCollapsed ? '+' : '−'}
+                      </span>
+                    </button>
+                  </h3>
                 )}
+                <div
+                  hidden={isCollapsed}
+                  id={isGrouped ? groupContentId : undefined}
+                >
+                  <div className="media-grid">
+                    {group.items.map((item) => (
+                      <MediaCard
+                        deleteDisabled={remove.isPending}
+                        isDeleting={
+                          remove.isPending && remove.variables === item.id
+                        }
+                        item={item}
+                        key={item.id}
+                        onDelete={() => deleteItem(item)}
+                        onPreview={() => setPreviewItemId(item.id)}
+                        previewOpen={Boolean(previewItemId)}
+                      />
+                    ))}
+                  </div>
+                  {group.nextOffset !== null && (
+                    <button
+                      className="load-more-button"
+                      disabled={loadMore.isPending}
+                      onClick={() => loadGroup(group)}
+                      type="button"
+                    >
+                      {isLoadingGroup ? 'Loading…' : 'Load more'}
+                    </button>
+                  )}
+                </div>
               </section>
             );
           })}
