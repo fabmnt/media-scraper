@@ -1,9 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { discoverProfileMedia } from '@media-scraper/extractors';
-import {
-  profileLookupSchema,
-  type ProfileMediaResults,
-} from '@media-scraper/shared';
+import { profileLookupSchema } from '@media-scraper/shared';
 import {
   hasPlatformCredential,
   platformCredentialPath,
@@ -20,12 +17,17 @@ export async function profileRoutes(
   app.post(
     '/lookup',
     { schema: { tags: ['profiles'] } },
-    async (request, reply): Promise<ProfileMediaResults> => {
+    async (request, reply) => {
       const input = profileLookupSchema.parse(request.body);
       const hasCredential = await hasPlatformCredential(
         credentialsRoot,
         input.platform,
       );
+      const abortController = new AbortController();
+      const abortDiscovery = () => {
+        if (!reply.raw.writableFinished) abortController.abort();
+      };
+      reply.raw.once('close', abortDiscovery);
 
       try {
         return {
@@ -34,6 +36,7 @@ export async function profileRoutes(
             hasCredential
               ? platformCredentialPath(credentialsRoot, input.platform)
               : undefined,
+            abortController.signal,
           ),
         };
       } catch (error) {
@@ -44,6 +47,8 @@ export async function profileRoutes(
               ? error.message
               : 'Could not read this profile',
         });
+      } finally {
+        reply.raw.off('close', abortDiscovery);
       }
     },
   );

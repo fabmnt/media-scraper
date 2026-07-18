@@ -212,7 +212,11 @@ export function ProfileCollectionForm() {
           Could not queue the selected media. {queue.error.message}
         </p>
       )}
-      {queueMessage && <p className="queue-success">{queueMessage}</p>}
+      {queueMessage && (
+        <p className="queue-success" role="status">
+          {queueMessage}
+        </p>
+      )}
     </section>
   );
 }

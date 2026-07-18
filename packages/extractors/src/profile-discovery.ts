@@ -12,6 +12,7 @@ import { z } from 'zod';
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 90_000;
 const PROFILE_RESOLUTION_TIMEOUT_MS = 30_000;
+const MAX_CONCURRENT_DISCOVERY_PROCESSES = 2;
 const MAX_DISCOVERY_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_PROFILE_PAGE_BYTES = 2 * 1024 * 1024;
 const INSTAGRAM_PROFILE_ID_PATTERNS = [
@@ -81,12 +82,48 @@ const galleryMessageSchema = z.union([
 const galleryOutputSchema = z.array(galleryMessageSchema);
 type GalleryMetadata = z.infer<typeof galleryMetadataSchema>;
 
-async function instagramProfileId(username: string) {
+let activeDiscoveryProcesses = 0;
+const discoveryQueue: Array<() => void> = [];
+
+async function acquireDiscoverySlot(signal?: AbortSignal) {
+  if (signal?.aborted) throw signal.reason;
+  if (activeDiscoveryProcesses < MAX_CONCURRENT_DISCOVERY_PROCESSES) {
+    activeDiscoveryProcesses += 1;
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const start = () => {
+      signal?.removeEventListener('abort', cancel);
+      activeDiscoveryProcesses += 1;
+      resolve();
+    };
+    const cancel = () => {
+      const queueIndex = discoveryQueue.indexOf(start);
+      if (queueIndex >= 0) discoveryQueue.splice(queueIndex, 1);
+      reject(signal?.reason);
+    };
+    discoveryQueue.push(start);
+    signal?.addEventListener('abort', cancel, { once: true });
+  });
+}
+
+function releaseDiscoverySlot() {
+  activeDiscoveryProcesses -= 1;
+  discoveryQueue.shift()?.();
+}
+
+async function instagramProfileId(username: string, signal?: AbortSignal) {
   const response = await fetch(
     `https://www.instagram.com/${encodeURIComponent(username)}/`,
     {
       headers: { 'user-agent': 'media-scraper/0.1' },
-      signal: AbortSignal.timeout(PROFILE_RESOLUTION_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([
+            signal,
+            AbortSignal.timeout(PROFILE_RESOLUTION_TIMEOUT_MS),
+          ])
+        : AbortSignal.timeout(PROFILE_RESOLUTION_TIMEOUT_MS),
     },
   );
   if (!response.ok) {
@@ -95,10 +132,25 @@ async function instagramProfileId(username: string) {
     );
   }
 
-  const html = await response.text();
-  if (Buffer.byteLength(html) > MAX_PROFILE_PAGE_BYTES) {
-    throw new Error('Instagram profile page exceeded the size limit');
+  if (!response.body) throw new Error('Instagram profile returned no content');
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      receivedBytes += value.byteLength;
+      if (receivedBytes > MAX_PROFILE_PAGE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error('Instagram profile page exceeded the size limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
   }
+  const html = Buffer.concat(chunks, receivedBytes).toString('utf8');
   for (const pattern of INSTAGRAM_PROFILE_ID_PATTERNS) {
     const profileId = pattern.exec(html)?.[1];
     if (profileId) return profileId;
@@ -106,11 +158,15 @@ async function instagramProfileId(username: string) {
   throw new Error('Instagram profile ID was not found');
 }
 
-async function profileUrls(platform: Platform, username: string) {
+async function profileUrls(
+  platform: Platform,
+  username: string,
+  signal?: AbortSignal,
+) {
   const encodedUsername = encodeURIComponent(username);
   switch (platform) {
     case 'instagram': {
-      const profileIdentifier = await instagramProfileId(username)
+      const profileIdentifier = await instagramProfileId(username, signal)
         .then((profileId) => `id:${profileId}`)
         .catch(() => encodedUsername);
       return [
@@ -168,10 +224,11 @@ function sourceDetails(
     }
     case 'tiktok': {
       const id = metadata.id ?? metadata.post_id;
+      const route = metadata.post_type === 'image' ? 'photo' : 'video';
       return id
         ? {
             id,
-            sourceUrl: `https://www.tiktok.com/@${encodeURIComponent(username)}/video/${id}`,
+            sourceUrl: `https://www.tiktok.com/@${encodeURIComponent(username)}/${route}/${id}`,
           }
         : undefined;
     }
@@ -215,8 +272,10 @@ function assetCount(platform: Platform, metadata: GalleryMetadata) {
 async function extractProfileSource(
   url: string,
   authenticationArguments: string[],
+  signal?: AbortSignal,
 ) {
   let stdout: string;
+  await acquireDiscoverySlot(signal);
   try {
     const result = await execFileAsync(
       'gallery-dl',
@@ -236,6 +295,7 @@ async function extractProfileSource(
       {
         encoding: 'utf8',
         maxBuffer: MAX_DISCOVERY_OUTPUT_BYTES,
+        signal,
         timeout: DISCOVERY_TIMEOUT_MS,
       },
     );
@@ -245,6 +305,8 @@ async function extractProfileSource(
       'Could not read this profile. Check the username and platform authentication.',
       { cause: error },
     );
+  } finally {
+    releaseDiscoverySlot();
   }
 
   try {
@@ -259,15 +321,17 @@ async function extractProfileSource(
 export async function discoverProfileMedia(
   { platform, username }: ProfileLookup,
   cookiesPath?: string,
+  signal?: AbortSignal,
 ): Promise<ProfileMedia[]> {
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
   const messages: z.infer<typeof galleryOutputSchema> = [];
   const extractionErrors: Error[] = [];
-  for (const url of await profileUrls(platform, username)) {
+  for (const url of await profileUrls(platform, username, signal)) {
     try {
       const sourceMessages = await extractProfileSource(
         url,
         authenticationArguments,
+        signal,
       );
       for (const message of sourceMessages) {
         if (message[0] === GALLERY_ERROR_MESSAGE) {
