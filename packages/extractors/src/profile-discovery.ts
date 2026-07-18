@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import {
   MAX_PROFILE_MEDIA,
@@ -499,11 +500,19 @@ export async function discoverProfileMedia(
   const extractionError = sourceResults.flatMap((result) => result.errors)[0];
   if (extractionError) throw extractionError;
 
+  const sourcePageKeys = sourcePages.map((entries) =>
+    entries.map((entry) =>
+      entry
+        ? createHash('sha256').update(entry.sourceUrl).digest('base64url')
+        : undefined,
+    ),
+  );
   const candidates = new Map<string, ProfileMedia>();
   for (const [index, entries] of sourcePages.entries()) {
-    const skippedUrls = new Set(continuation.sources[index]?.skipUrls ?? []);
-    for (const media of entries) {
-      if (media && !skippedUrls.has(media.sourceUrl)) {
+    const skippedKeys = new Set(continuation.sources[index]?.skipKeys ?? []);
+    for (const [entryIndex, media] of entries.entries()) {
+      const key = sourcePageKeys[index]?.[entryIndex];
+      if (media && key && !skippedKeys.has(key)) {
         candidates.set(media.sourceUrl, media);
       }
     }
@@ -519,32 +528,32 @@ export async function discoverProfileMedia(
   const nextSources = sourcePages.map((entries, index): ProfileSourceCursor => {
     const current = continuation.sources[index] ?? {
       offset: 0,
-      skipUrls: [],
+      skipKeys: [],
     };
-    const emittedUrls = new Set(current.skipUrls);
-    for (const entry of entries) {
-      if (entry && selectedUrls.has(entry.sourceUrl)) {
-        emittedUrls.add(entry.sourceUrl);
+    const entryKeys = sourcePageKeys[index] ?? [];
+    const emittedKeys = new Set(current.skipKeys);
+    for (const [entryIndex, entry] of entries.entries()) {
+      const key = entryKeys[entryIndex];
+      if (entry && key && selectedUrls.has(entry.sourceUrl)) {
+        emittedKeys.add(key);
       }
     }
 
     let consumedEntries = 0;
-    for (const entry of entries) {
-      if (entry && !emittedUrls.has(entry.sourceUrl)) break;
+    for (const key of entryKeys) {
+      if (key && !emittedKeys.has(key)) break;
       consumedEntries += 1;
     }
-    const remainingUrls = new Set(
-      entries
-        .slice(consumedEntries)
-        .flatMap((entry) => (entry ? [entry.sourceUrl] : [])),
+    const remainingKeys = new Set(
+      entryKeys.slice(consumedEntries).filter((key) => key !== undefined),
     );
-    const skipUrls = [...emittedUrls].filter((url) => remainingUrls.has(url));
+    const skipKeys = [...emittedKeys].filter((key) => remainingKeys.has(key));
     if (consumedEntries < entries.length || entries.length === pageSize + 1) {
       hasContinuation = true;
     }
     return {
       offset: current.offset + consumedEntries,
-      skipUrls,
+      skipKeys,
     };
   });
 

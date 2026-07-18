@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import {
-  MAX_PROFILE_CURSOR_LENGTH,
   MAX_PROFILE_MEDIA,
+  MAX_PROFILE_SOURCE_CURSOR_LENGTH,
   PROFILE_DISCOVERY_CACHE_ITEMS,
   platformSchema,
   profileMediaSchema,
@@ -12,7 +12,7 @@ import {
 import { InvalidProfileCursorError } from '@media-scraper/extractors';
 import { z } from 'zod';
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_KEY_PREFIX = `profile-discovery:v${String(CACHE_VERSION)}`;
 const cacheCursorSchema = z.object({
   version: z.literal(CACHE_VERSION),
@@ -23,13 +23,16 @@ const cachedSnapshotSchema = z.object({
   platform: platformSchema,
   username: z.string().min(1).max(100),
   items: z.array(profileMediaSchema).max(PROFILE_DISCOVERY_CACHE_ITEMS),
-  sourceCursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).nullable(),
+  sourceCursor: z.string().max(MAX_PROFILE_SOURCE_CURSOR_LENGTH).nullable(),
   nextSnapshotId: z.uuid().nullable(),
 });
 
 type CachedSnapshot = z.infer<typeof cachedSnapshotSchema>;
 type SnapshotIdentity = Pick<ProfileLookup, 'platform' | 'username'>;
-type SnapshotLoader = (cursor?: string) => Promise<ProfileMediaResults>;
+type SnapshotLoader = (
+  cursor: string | undefined,
+  signal: AbortSignal,
+) => Promise<ProfileMediaResults>;
 
 function invalidCursor(
   message = 'The profile continuation cursor is invalid.',
@@ -59,6 +62,7 @@ function decodeCacheCursor(cursor: string) {
 }
 
 export class ProfileDiscoveryCache {
+  private readonly abortController = new AbortController();
   private readonly inFlight = new Map<
     string,
     Promise<{ id: string; snapshot: CachedSnapshot }>
@@ -68,6 +72,10 @@ export class ProfileDiscoveryCache {
     private readonly redis: Redis,
     private readonly ttlSeconds: number,
   ) {}
+
+  close() {
+    this.abortController.abort(new Error('Profile discovery cache closed'));
+  }
 
   async page(
     input: ProfileLookup,
@@ -122,7 +130,7 @@ export class ProfileDiscoveryCache {
         }
       }
 
-      const result = await load();
+      const result = await load(undefined, this.abortController.signal);
       const created = await this.createSnapshot(identity, result);
       await this.redis.set(lookupKey, created.id, 'EX', this.ttlSeconds);
       return created;
@@ -188,7 +196,10 @@ export class ProfileDiscoveryCache {
         }
       }
 
-      const result = await load(current.sourceCursor);
+      const result = await load(
+        current.sourceCursor,
+        this.abortController.signal,
+      );
       const created = await this.createSnapshot(identity, result);
       await this.writeSnapshot(snapshotId, {
         ...current,

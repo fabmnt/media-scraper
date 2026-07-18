@@ -26,36 +26,33 @@ export async function profileRoutes(
   { cacheTtlSeconds, credentialsRoot, redis }: ProfileRoutesOptions,
 ) {
   const cache = new ProfileDiscoveryCache(redis, cacheTtlSeconds);
+  app.addHook('onClose', () => cache.close());
 
   app.post(
     '/lookup',
     { schema: { tags: ['profiles'] } },
     async (request, reply) => {
       const input = profileLookupSchema.parse(request.body);
-      const hasCredential = await hasPlatformCredential(
-        credentialsRoot,
-        input.platform,
-      );
-      const credentialPath = hasCredential
-        ? platformCredentialPath(credentialsRoot, input.platform)
-        : undefined;
-      const credentialVersion = credentialPath
-        ? await stat(credentialPath).then(
-            ({ mtimeMs, size }) => `${String(mtimeMs)}:${String(size)}`,
-          )
-        : 'public';
-      const abortController = new AbortController();
-      const abortDiscovery = () => {
-        if (!reply.raw.writableFinished) abortController.abort();
-      };
-      reply.raw.once('close', abortDiscovery);
 
       try {
-        return await cache.page(input, credentialVersion, (cursor) =>
+        const hasCredential = await hasPlatformCredential(
+          credentialsRoot,
+          input.platform,
+        );
+        const credentialPath = hasCredential
+          ? platformCredentialPath(credentialsRoot, input.platform)
+          : undefined;
+        const credentialVersion = credentialPath
+          ? await stat(credentialPath).then(
+              ({ mtimeMs, size }) => `${String(mtimeMs)}:${String(size)}`,
+            )
+          : 'public';
+
+        return await cache.page(input, credentialVersion, (cursor, signal) =>
           discoverProfileMedia(
             { ...input, cursor },
             credentialPath,
-            abortController.signal,
+            signal,
             PROFILE_DISCOVERY_CACHE_ITEMS,
           ),
         );
@@ -70,8 +67,6 @@ export async function profileRoutes(
               ? error.message
               : 'Could not read this profile',
         });
-      } finally {
-        reply.raw.off('close', abortDiscovery);
       }
     },
   );

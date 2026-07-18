@@ -20,6 +20,7 @@ export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
 export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA * 4;
 export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
+export const MAX_PROFILE_SOURCE_CURSOR_LENGTH = MAX_PROFILE_CURSOR_LENGTH * 4;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);

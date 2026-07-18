@@ -1,15 +1,17 @@
 import {
-  MAX_PROFILE_CURSOR_LENGTH,
+  MAX_PROFILE_SOURCE_CURSOR_LENGTH,
   PROFILE_DISCOVERY_CACHE_ITEMS,
   platformSchema,
   type Platform,
 } from '@media-scraper/shared';
 import { z } from 'zod';
 
-const PROFILE_CURSOR_VERSION = 1;
+const PROFILE_CURSOR_VERSION = 2;
 const profileSourceCursorSchema = z.object({
   offset: z.number().int().nonnegative().safe(),
-  skipUrls: z.array(z.url()).max(PROFILE_DISCOVERY_CACHE_ITEMS),
+  skipKeys: z
+    .array(z.string().regex(/^[A-Za-z0-9_-]{43}$/))
+    .max(PROFILE_DISCOVERY_CACHE_ITEMS),
 });
 const profileCursorSchema = z.object({
   version: z.literal(PROFILE_CURSOR_VERSION),
@@ -43,7 +45,7 @@ export function decodeProfileCursor(
       profileIdentifier: undefined,
       sources: Array.from(
         { length: context.sourceCount },
-        (): ProfileSourceCursor => ({ offset: 0, skipUrls: [] }),
+        (): ProfileSourceCursor => ({ offset: 0, skipKeys: [] }),
       ),
     };
   }
@@ -86,7 +88,7 @@ export function encodeProfileCursor(
       }),
     ),
   ).toString('base64url');
-  if (cursor.length > MAX_PROFILE_CURSOR_LENGTH) {
+  if (cursor.length > MAX_PROFILE_SOURCE_CURSOR_LENGTH) {
     throw new Error('The profile continuation cursor exceeded its size limit.');
   }
   return cursor;
