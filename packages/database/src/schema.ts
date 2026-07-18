@@ -109,6 +109,16 @@ export const mediaItems = pgTable(
       'gin',
       table.authorName.op('gin_trgm_ops'),
     ),
+    index('media_items_author_group_pagination_idx').on(
+      sql`nullif(btrim(${table.authorName}), '')`,
+      table.collectedAt.desc(),
+      table.id.asc(),
+    ),
+    index('media_items_platform_group_pagination_idx').on(
+      table.platform,
+      table.collectedAt.desc(),
+      table.id.asc(),
+    ),
   ],
 );
 

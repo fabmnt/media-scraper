@@ -43,6 +43,13 @@
       "when": 1784327075022,
       "tag": "0005_secret_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784353600757,
+      "tag": "0006_purple_mentor",
+      "breakpoints": true
     }
   ]
 }

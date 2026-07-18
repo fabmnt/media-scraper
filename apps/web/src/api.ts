@@ -4,7 +4,8 @@ import type {
   CredentialStatus,
   CreateCollectionBatchInput,
   CreateCollectionInput,
-  MediaItem,
+  MediaGroupMode,
+  MediaItemGroups,
   Page,
   Platform,
   ProfileLookupInput,
@@ -101,13 +102,19 @@ export const api = {
   retryCollection: (id: string) =>
     request<Collection>(`/collections/${id}/retry`, { method: 'POST' }),
   listMedia: (filters: {
+    groupBy?: MediaGroupMode;
+    groupKey?: string;
+    groupOffset?: number;
     limit?: number;
     offset?: number;
     platform?: Platform | undefined;
     search?: string | undefined;
   }) =>
-    request<Page<MediaItem>>(
+    request<MediaItemGroups>(
       `/media-items${pageQuery({
+        groupBy: filters.groupBy,
+        groupKey: filters.groupKey,
+        groupOffset: filters.groupOffset,
         limit: filters.limit,
         offset: filters.offset,
         platform: filters.platform,
