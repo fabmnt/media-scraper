@@ -1,143 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  useInfiniteQuery,
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query';
-import {
+  MEDIA_LIBRARY_PAGE_SIZE,
   SUPPORTED_PLATFORMS,
+  type MediaGroupMode,
   type MediaItem,
+  type MediaItemGroup,
   type Platform,
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
+import { MediaCard } from './MediaCard';
 import { MediaPreview } from './MediaPreview';
 
-const MEDIA_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 350;
-const UNGROUPED_LABEL = 'All media';
-const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
-type GroupMode = 'none' | 'creator' | 'platform';
+interface LoadedGroupPage {
+  items: MediaItem[];
+  nextOffset: number | null;
+}
 
-function MediaCard({
-  item,
-  deleteDisabled,
-  isDeleting,
-  previewOpen,
-  onDelete,
-  onPreview,
-}: {
-  deleteDisabled: boolean;
-  item: MediaItem;
-  isDeleting: boolean;
-  previewOpen: boolean;
-  onDelete: () => void;
-  onPreview: () => void;
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [assetIndex, setAssetIndex] = useState(0);
-  const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
-  const hasMultipleAssets = item.assets.length > 1;
-
-  useEffect(() => {
-    if (assetIndex >= item.assets.length) setAssetIndex(0);
-  }, [assetIndex, item.assets.length]);
-
-  useEffect(() => {
-    if (previewOpen) videoRef.current?.pause();
-  }, [previewOpen]);
-
-  function selectAdjacentAsset(direction: -1 | 1) {
-    setAssetIndex(
-      (currentIndex) =>
-        (currentIndex + direction + item.assets.length) % item.assets.length,
-    );
-  }
-
-  return (
-    <article className="media-card">
-      <div className="preview">
-        {selectedAsset?.type === 'image' ? (
-          <img
-            alt={item.caption ?? `${item.platform} media`}
-            loading="lazy"
-            src={api.mediaUrl(selectedAsset.url)}
-          />
-        ) : selectedAsset ? (
-          <video
-            controls
-            key={selectedAsset.id}
-            preload="metadata"
-            ref={videoRef}
-            src={api.mediaUrl(selectedAsset.url)}
-          />
-        ) : (
-          <div className="empty-preview">No preview</div>
-        )}
-        <span className="platform">{item.platform}</span>
-        {hasMultipleAssets && (
-          <>
-            <span className="asset-count">
-              {assetIndex + 1} / {item.assets.length}
-            </span>
-            <button
-              aria-label="Previous asset"
-              className="carousel-control carousel-previous"
-              onClick={() => selectAdjacentAsset(-1)}
-              type="button"
-            >
-              ‹
-            </button>
-            <button
-              aria-label="Next asset"
-              className="carousel-control carousel-next"
-              onClick={() => selectAdjacentAsset(1)}
-              type="button"
-            >
-              ›
-            </button>
-          </>
-        )}
-      </div>
-      <div className="card-body">
-        <div className="card-title-row">
-          <strong title={item.authorName ?? UNKNOWN_CREATOR_LABEL}>
-            {item.authorName ?? UNKNOWN_CREATOR_LABEL}
-          </strong>
-          <span>{new Date(item.collectedAt).toLocaleDateString()}</span>
-        </div>
-        <p>{item.caption ?? 'No caption available'}</p>
-        <div className="card-actions">
-          <button
-            aria-label={`Preview media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
-            onClick={onPreview}
-            type="button"
-          >
-            Preview
-          </button>
-          <a href={item.sourceUrl} rel="noreferrer" target="_blank">
-            Source ↗
-          </a>
-          {selectedAsset && (
-            <a download href={api.downloadUrl(selectedAsset.id)}>
-              Download{hasMultipleAssets ? ` ${assetIndex + 1}` : ''}
-            </a>
-          )}
-          <button disabled={deleteDisabled} onClick={onDelete} type="button">
-            {isDeleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </article>
-  );
+interface LoadedGroupPages {
+  dataUpdatedAt: number;
+  groups: Record<string, LoadedGroupPage>;
+  requestKey: string;
 }
 
 export function Gallery() {
   const [platform, setPlatform] = useState<Platform | undefined>();
-  const [groupMode, setGroupMode] = useState<GroupMode>('none');
+  const [groupMode, setGroupMode] = useState<MediaGroupMode>('none');
   const [previewItemId, setPreviewItemId] = useState<string>();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [loadedPages, setLoadedPages] = useState<LoadedGroupPages>();
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -148,17 +42,79 @@ export function Gallery() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
-  const media = useInfiniteQuery({
-    queryKey: queryKeys.media(platform, debouncedSearch),
-    queryFn: ({ pageParam }) =>
+  const requestKey = JSON.stringify([
+    groupMode,
+    platform ?? null,
+    debouncedSearch,
+  ]);
+  const media = useQuery({
+    queryKey: queryKeys.media(groupMode, platform, debouncedSearch),
+    queryFn: () =>
       api.listMedia({
-        limit: MEDIA_PAGE_SIZE,
-        offset: pageParam,
+        groupBy: groupMode,
+        limit: MEDIA_LIBRARY_PAGE_SIZE,
         platform,
         search: debouncedSearch || undefined,
       }),
-    initialPageParam: 0,
-    getNextPageParam: (page) => page.nextOffset ?? undefined,
+  });
+  const activeRequest = useRef({
+    dataUpdatedAt: media.dataUpdatedAt,
+    requestKey,
+  });
+  activeRequest.current = { dataUpdatedAt: media.dataUpdatedAt, requestKey };
+
+  const loadMore = useMutation({
+    mutationFn: ({
+      groupKey,
+      offset,
+    }: {
+      dataUpdatedAt: number;
+      groupKey: string;
+      offset: number;
+      requestKey: string;
+    }) =>
+      api.listMedia({
+        groupBy: groupMode,
+        groupKey,
+        limit: MEDIA_LIBRARY_PAGE_SIZE,
+        offset,
+        platform,
+        search: debouncedSearch || undefined,
+      }),
+    onSuccess: (page, request) => {
+      if (
+        request.requestKey !== activeRequest.current.requestKey ||
+        request.dataUpdatedAt !== activeRequest.current.dataUpdatedAt
+      ) {
+        return;
+      }
+      const nextGroup = page.groups[0];
+      if (!nextGroup) return;
+
+      setLoadedPages((current) => {
+        const currentGroups =
+          current?.requestKey === request.requestKey &&
+          current.dataUpdatedAt === request.dataUpdatedAt
+            ? current.groups
+            : {};
+        const previousGroup = currentGroups[request.groupKey];
+        const itemsById = new Map(
+          previousGroup?.items.map((item) => [item.id, item]),
+        );
+        for (const item of nextGroup.items) itemsById.set(item.id, item);
+        return {
+          dataUpdatedAt: request.dataUpdatedAt,
+          requestKey: request.requestKey,
+          groups: {
+            ...currentGroups,
+            [request.groupKey]: {
+              items: [...itemsById.values()],
+              nextOffset: nextGroup.nextOffset,
+            },
+          },
+        };
+      });
+    },
   });
   const remove = useMutation({
     mutationFn: api.deleteMedia,
@@ -173,23 +129,34 @@ export function Gallery() {
     }
   }
 
-  const items = media.data?.pages.flatMap((page) => page.items) ?? [];
-  const groupedItems = new Map<string, MediaItem[]>();
-  for (const item of items) {
-    let group = UNGROUPED_LABEL;
-    if (groupMode === 'creator') {
-      group = item.authorName?.trim() || UNKNOWN_CREATOR_LABEL;
-    } else if (groupMode === 'platform') {
-      group = item.platform;
-    }
-    const groupItems = groupedItems.get(group) ?? [];
-    groupItems.push(item);
-    groupedItems.set(group, groupItems);
+  function loadGroup(group: MediaItemGroup) {
+    if (group.nextOffset === null) return;
+    loadMore.mutate({
+      dataUpdatedAt: media.dataUpdatedAt,
+      groupKey: group.key,
+      offset: group.nextOffset,
+      requestKey,
+    });
   }
-  const groups = [...groupedItems.entries()].sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  const previewItems = groups.flatMap(([, groupItems]) => groupItems);
+
+  const currentLoadedPages =
+    loadedPages?.requestKey === requestKey &&
+    loadedPages.dataUpdatedAt === media.dataUpdatedAt
+      ? loadedPages.groups
+      : {};
+  const groups = (media.data?.groups ?? []).map((group) => {
+    const loadedGroup = currentLoadedPages[group.key];
+    if (!loadedGroup) return group;
+
+    const itemsById = new Map(group.items.map((item) => [item.id, item]));
+    for (const item of loadedGroup.items) itemsById.set(item.id, item);
+    return {
+      ...group,
+      items: [...itemsById.values()],
+      nextOffset: loadedGroup.nextOffset,
+    };
+  });
+  const items = groups.flatMap((group) => group.items);
 
   return (
     <>
@@ -207,7 +174,7 @@ export function Gallery() {
           <input
             aria-label="Search media"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search captions or creators"
+            placeholder="Search usernames or captions"
             type="search"
             value={search}
           />
@@ -229,65 +196,73 @@ export function Gallery() {
           </select>
           <select
             aria-label="Group media"
-            onChange={(event) => setGroupMode(event.target.value as GroupMode)}
+            onChange={(event) =>
+              setGroupMode(event.target.value as MediaGroupMode)
+            }
             value={groupMode}
           >
             <option value="none">No grouping</option>
-            <option value="creator">Group by username</option>
+            <option value="username">Group by username</option>
             <option value="platform">Group by platform</option>
           </select>
         </div>
         {media.isLoading && (
           <p className="empty-state">Loading your library…</p>
         )}
-        {(media.error || remove.error) && (
-          <p className="error">{(media.error ?? remove.error)?.message}</p>
+        {(media.error || remove.error || loadMore.error) && (
+          <p className="error">
+            {(media.error ?? remove.error ?? loadMore.error)?.message}
+          </p>
         )}
         {!media.isLoading && items.length === 0 && (
           <p className="empty-state">Your collected media will appear here.</p>
         )}
         <div className="media-groups">
-          {groups.map(([group, groupItems]) => (
-            <section className="media-group" key={group}>
-              {groupMode !== 'none' && (
-                <div className="group-heading">
-                  <h3>{group}</h3>
-                  <span>{groupItems.length}</span>
+          {groups.map((group) => {
+            const isLoadingGroup =
+              loadMore.isPending && loadMore.variables?.groupKey === group.key;
+            return (
+              <section className="media-group" key={group.key}>
+                {groupMode !== 'none' && (
+                  <div className="group-heading">
+                    <h3>{group.label}</h3>
+                    <span>{group.items.length}</span>
+                  </div>
+                )}
+                <div className="media-grid">
+                  {group.items.map((item) => (
+                    <MediaCard
+                      deleteDisabled={remove.isPending}
+                      isDeleting={
+                        remove.isPending && remove.variables === item.id
+                      }
+                      item={item}
+                      key={item.id}
+                      onDelete={() => deleteItem(item)}
+                      onPreview={() => setPreviewItemId(item.id)}
+                      previewOpen={Boolean(previewItemId)}
+                    />
+                  ))}
                 </div>
-              )}
-              <div className="media-grid">
-                {groupItems.map((item) => (
-                  <MediaCard
-                    deleteDisabled={remove.isPending}
-                    isDeleting={
-                      remove.isPending && remove.variables === item.id
-                    }
-                    item={item}
-                    key={item.id}
-                    onDelete={() => deleteItem(item)}
-                    onPreview={() => setPreviewItemId(item.id)}
-                    previewOpen={Boolean(previewItemId)}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+                {group.nextOffset !== null && (
+                  <button
+                    className="load-more-button"
+                    disabled={loadMore.isPending}
+                    onClick={() => loadGroup(group)}
+                    type="button"
+                  >
+                    {isLoadingGroup ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </section>
+            );
+          })}
         </div>
-        {media.hasNextPage && (
-          <button
-            className="load-more-button"
-            disabled={media.isFetchingNextPage}
-            onClick={() => void media.fetchNextPage()}
-            type="button"
-          >
-            {media.isFetchingNextPage ? 'Loading…' : 'Load more media'}
-          </button>
-        )}
       </section>
       {previewItemId && (
         <MediaPreview
           initialItemId={previewItemId}
-          items={previewItems}
+          items={items}
           onClose={() => setPreviewItemId(undefined)}
         />
       )}

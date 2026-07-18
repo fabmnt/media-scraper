@@ -8,6 +8,7 @@ export const COLLECTION_STATUSES = [
   'failed',
 ] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
+export const MEDIA_GROUP_MODES = ['none', 'username', 'platform'] as const;
 export const MEDIA_MAINTENANCE_TYPES = [
   'delete_local',
   'delete_object',
@@ -16,6 +17,7 @@ export const MEDIA_MAINTENANCE_TYPES = [
 export const COLLECTION_QUEUE_NAME = 'media-collections';
 export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
+export const MEDIA_LIBRARY_PAGE_SIZE = 18;
 export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
 export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA * 4;
@@ -26,11 +28,13 @@ export const MAX_COLLECTION_BATCH_SIZE = 100;
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
+export const mediaGroupModeSchema = z.enum(MEDIA_GROUP_MODES);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
+export type MediaGroupMode = z.infer<typeof mediaGroupModeSchema>;
 export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
 
 interface PlatformCredentialConfig {
@@ -176,6 +180,18 @@ export const collectionSchema = z.object({
 
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 export type MediaItem = z.infer<typeof mediaItemSchema>;
+
+export interface MediaItemGroup {
+  key: string;
+  label: string;
+  items: MediaItem[];
+  nextOffset: number | null;
+}
+
+export interface MediaItemGroups {
+  groups: MediaItemGroup[];
+}
+
 export const credentialInputSchema = z.object({
   cookies: z
     .string()
