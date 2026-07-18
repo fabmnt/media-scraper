@@ -12,7 +12,7 @@ import {
 import { InvalidProfileCursorError } from '@media-scraper/extractors';
 import { z } from 'zod';
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_KEY_PREFIX = `profile-discovery:v${String(CACHE_VERSION)}`;
 const cacheCursorSchema = z.object({
   version: z.literal(CACHE_VERSION),

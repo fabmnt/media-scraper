@@ -23,7 +23,10 @@ import { registerAuthentication } from './auth.js';
 type ApiError = Error & { statusCode?: number };
 
 const ALLOWED_HTTP_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'];
+const DATASTORE_CONNECT_TIMEOUT_MS = 5_000;
+const DATASTORE_COMMAND_TIMEOUT_MS = 5_000;
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+const MAX_API_REDIS_RETRIES = 1;
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   let timeout: NodeJS.Timeout | undefined;
@@ -49,6 +52,7 @@ interface ApiConfig {
   mediaRoot: string;
   mediaStorage: MediaStorageOptions;
   profileDiscoveryCacheTtlSeconds: number;
+  profileDiscoveryTimeoutMs: number;
   redisUrl: string;
   secureCookie: boolean;
   webOrigin: string;
@@ -57,7 +61,11 @@ interface ApiConfig {
 export async function buildApp(config: ApiConfig) {
   const app = Fastify({ logger: true });
   const database = createDatabase(config.databaseUrl);
-  const redis = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
+  const redis = new Redis(config.redisUrl, {
+    commandTimeout: DATASTORE_COMMAND_TIMEOUT_MS,
+    connectTimeout: DATASTORE_CONNECT_TIMEOUT_MS,
+    maxRetriesPerRequest: MAX_API_REDIS_RETRIES,
+  });
   const storage = new MediaStorage(config.mediaStorage);
   const queue = new Queue<CollectionJobPayload>(COLLECTION_QUEUE_NAME, {
     connection: redis,
@@ -111,6 +119,7 @@ export async function buildApp(config: ApiConfig) {
     cacheTtlSeconds: config.profileDiscoveryCacheTtlSeconds,
     credentialsRoot: config.credentialsRoot,
     redis,
+    timeoutMs: config.profileDiscoveryTimeoutMs,
   });
   await app.register(mediaRoutes, {
     prefix: '/media-items',

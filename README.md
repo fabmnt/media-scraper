@@ -38,6 +38,7 @@ REDIS_URL=${{Redis.REDIS_URL}}
 API_ACCESS_TOKEN=<a random value of at least 32 characters>
 API_HOST=0.0.0.0
 COOKIE_SECURE=true
+PROFILE_DISCOVERY_TIMEOUT_MS=45000
 # Use http://localhost:5173 until the web service has a generated domain.
 WEB_ORIGIN=http://localhost:5173
 MEDIA_ROOT=/data/media
@@ -86,7 +87,7 @@ pnpm dev
 
 Downloaded files are stored under `MEDIA_ROOT`. Relative storage paths are resolved from the workspace root so the API and worker always share the same files. Collection jobs retry three times with exponential backoff, and failed jobs remain visible for diagnostics and manual retry.
 
-Profile discovery uses `gallery-dl` in metadata-only mode and returns at most 24 items per request. Instagram discovery includes posts and reels, TikTok includes posts, and Facebook includes profile photos. Discovery metadata is fetched in bounded 96-item snapshots and cached in Redis for 10 minutes by default, making the next three pages available without another platform request. When more media is available, an opaque continuation cursor chains to another cached snapshot without imposing a total browsing limit. `PROFILE_DISCOVERY_CACHE_TTL_SECONDS` controls the cache lifetime. Up to 100 selected items are accepted in one batch API request and their canonical post URLs are queued through the same collection pipeline and limits as manually pasted links.
+Profile discovery uses `gallery-dl` in metadata-only mode and returns at most 24 items per request. Instagram discovery includes posts and reels, TikTok includes posts, and Facebook includes profile photos. Discovery metadata is fetched in bounded 24-item snapshots and cached in Redis for 10 minutes by default. When more media is available, an opaque continuation cursor loads and caches another snapshot without imposing a total browsing limit. Cold profile extraction is limited to one active and one queued lookup, runs at most one `gallery-dl` process at a time, and has a 45-second total deadline by default so it cannot starve normal API traffic. `PROFILE_DISCOVERY_CACHE_TTL_SECONDS` controls the cache lifetime, and `PROFILE_DISCOVERY_TIMEOUT_MS` controls the deadline up to a maximum of 90 seconds. Up to 100 selected items are accepted in one batch API request and their canonical post URLs are queued through the same collection pipeline and limits as manually pasted links.
 
 Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Still images are converted to WebP with a maximum 1920px dimension; animated GIF, WebP, APNG, and other multi-frame images are preserved unchanged. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
 
