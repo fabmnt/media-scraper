@@ -84,37 +84,60 @@ export async function collectionRoutes(
         .values(pendingCollections)
         .returning();
 
+      const jobs = pendingCollections.map((collection) => ({
+        name: COLLECTION_QUEUE_NAME,
+        data: {
+          collectionId: collection.id,
+          platform: collection.platform,
+          url: collection.sourceUrl,
+        },
+        opts: { ...jobOptions, jobId: collection.id },
+      }));
       try {
-        await queue.addBulk(
-          pendingCollections.map((collection) => ({
-            name: COLLECTION_QUEUE_NAME,
-            data: {
-              collectionId: collection.id,
-              platform: collection.platform,
-              url: collection.sourceUrl,
-            },
-            opts: jobOptions,
-          })),
-        );
+        await queue.addBulk(jobs);
       } catch (error) {
-        const failedCollections = await db
-          .update(collections)
-          .set({
-            status: 'failed',
-            errorMessage: errorMessage(error),
-            updatedAt: new Date(),
-          })
-          .where(
-            inArray(
-              collections.id,
-              pendingCollections.map((collection) => collection.id),
-            ),
-          )
-          .returning();
-        return reply.code(503).send({
-          message: 'Collections could not be queued',
-          collections: failedCollections.map(serializeCollection),
+        const recoveryResults = await Promise.allSettled(
+          jobs.map(async (job) => {
+            try {
+              await queue.add(job.name, job.data, job.opts);
+            } catch (recoveryError) {
+              const existingJob = await queue.getJob(job.opts.jobId);
+              if (!existingJob) throw recoveryError;
+            }
+          }),
+        );
+        const failedCollectionIds = recoveryResults.flatMap((result, index) => {
+          if (result.status === 'fulfilled') return [];
+          const collection = pendingCollections[index];
+          return collection ? [collection.id] : [];
         });
+        if (failedCollectionIds.length > 0) {
+          const failedCollections = await db
+            .update(collections)
+            .set({
+              status: 'failed',
+              errorMessage: errorMessage(error),
+              updatedAt: new Date(),
+            })
+            .where(inArray(collections.id, failedCollectionIds))
+            .returning();
+          const failedCollectionsById = new Map(
+            failedCollections.map((collection) => [collection.id, collection]),
+          );
+          const batchCollections = createdCollections.map(
+            (collection) =>
+              failedCollectionsById.get(collection.id) ?? collection,
+          );
+          if (failedCollectionIds.length === pendingCollections.length) {
+            return reply.code(503).send({
+              message: 'Collections could not be queued',
+              collections: batchCollections.map(serializeCollection),
+            });
+          }
+          return reply
+            .code(202)
+            .send(batchCollections.map(serializeCollection));
+        }
       }
 
       return reply.code(202).send(createdCollections.map(serializeCollection));
@@ -136,7 +159,7 @@ export async function collectionRoutes(
         await queue.add(
           COLLECTION_QUEUE_NAME,
           { ...input, collectionId: collection.id },
-          jobOptions,
+          { ...jobOptions, jobId: collection.id },
         );
       } catch (error) {
         const [failedCollection] = await db
@@ -180,15 +203,29 @@ export async function collectionRoutes(
     }
 
     try {
-      await queue.add(
-        COLLECTION_QUEUE_NAME,
-        {
-          collectionId: collection.id,
-          platform: collection.platform,
-          url: collection.sourceUrl,
-        },
-        jobOptions,
-      );
+      const existingJob = await queue.getJob(collection.id);
+      const existingJobState = await existingJob?.getState();
+      if (
+        existingJob &&
+        (existingJobState === 'failed' || existingJobState === 'completed')
+      ) {
+        await existingJob.remove();
+      }
+      if (
+        !existingJob ||
+        existingJobState === 'failed' ||
+        existingJobState === 'completed'
+      ) {
+        await queue.add(
+          COLLECTION_QUEUE_NAME,
+          {
+            collectionId: collection.id,
+            platform: collection.platform,
+            url: collection.sourceUrl,
+          },
+          { ...jobOptions, jobId: collection.id },
+        );
+      }
     } catch (error) {
       const [failedCollection] = await db
         .update(collections)

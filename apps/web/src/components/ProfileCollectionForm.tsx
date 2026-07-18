@@ -49,15 +49,21 @@ export function ProfileCollectionForm() {
         items: media.map((item) => ({ url: item.sourceUrl })),
       }),
     onMutate: () => setQueueMessage(''),
-    onSuccess: (queuedCollections) => {
+    onSuccess: (collections) => {
+      const queuedCollections = collections.filter(
+        (collection) => collection.status === 'queued',
+      );
       const queuedUrlSet = new Set(
         queuedCollections.map((collection) => collection.sourceUrl),
       );
       setSelectedUrls((current) =>
         current.filter((url) => !queuedUrlSet.has(url)),
       );
+      const failedCount = collections.length - queuedCollections.length;
       setQueueMessage(
-        `${String(queuedCollections.length)} media item${queuedCollections.length === 1 ? '' : 's'} queued.`,
+        failedCount > 0
+          ? `${String(queuedCollections.length)} queued; ${String(failedCount)} could not be queued.`
+          : `${String(queuedCollections.length)} media item${queuedCollections.length === 1 ? '' : 's'} queued.`,
       );
     },
     onSettled: async () => {
@@ -69,6 +75,8 @@ export function ProfileCollectionForm() {
   const selectedMedia = media.filter((item) =>
     selectedUrlSet.has(item.sourceUrl),
   );
+  const selectionLimitReached =
+    selectedUrls.length >= MAX_COLLECTION_BATCH_SIZE;
 
   function findProfile(event: FormEvent) {
     event.preventDefault();
@@ -186,16 +194,24 @@ export function ProfileCollectionForm() {
             </div>
           </div>
 
+          {selectionLimitReached && media.length > selectedUrls.length && (
+            <p className="profile-selection-limit" role="status">
+              Selection limit reached. Deselect an item to choose another.
+            </p>
+          )}
+
           <div className="profile-media-grid">
             {media.map((item) => {
               const isSelected = selectedUrlSet.has(item.sourceUrl);
+              const isSelectionDisabled = !isSelected && selectionLimitReached;
               return (
                 <label
-                  className={`profile-media-option${isSelected ? ' selected' : ''}`}
+                  className={`profile-media-option${isSelected ? ' selected' : ''}${isSelectionDisabled ? ' disabled' : ''}`}
                   key={item.sourceUrl}
                 >
                   <input
                     checked={isSelected}
+                    disabled={isSelectionDisabled}
                     onChange={() => toggleSelection(item.sourceUrl)}
                     type="checkbox"
                   />
