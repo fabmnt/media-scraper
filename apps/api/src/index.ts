@@ -8,6 +8,7 @@ const app = await buildApp({
   databaseUrl: config.DATABASE_URL,
   mediaRoot: config.MEDIA_ROOT,
   mediaStorage: mediaStorageOptions(config),
+  profileDiscoveryCacheTtlSeconds: config.PROFILE_DISCOVERY_CACHE_TTL_SECONDS,
   redisUrl: config.REDIS_URL,
   secureCookie: config.COOKIE_SECURE,
   webOrigin: config.WEB_ORIGIN,

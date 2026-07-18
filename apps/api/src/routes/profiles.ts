@@ -1,31 +1,34 @@
 import type { FastifyInstance } from 'fastify';
+import type { Redis } from 'ioredis';
 import {
   discoverProfileMedia,
   InvalidProfileCursorError,
 } from '@media-scraper/extractors';
-import { profileLookupSchema } from '@media-scraper/shared';
 import {
-  hasPlatformCredential,
-  platformCredentialPath,
-} from '../platform-cookies.js';
+  PROFILE_DISCOVERY_CACHE_ITEMS,
+  profileLookupSchema,
+} from '@media-scraper/shared';
+import { platformCredentialFile } from '../platform-cookies.js';
+import { ProfileDiscoveryCache } from '../profile-discovery-cache.js';
 
 interface ProfileRoutesOptions {
+  cacheTtlSeconds: number;
   credentialsRoot: string;
+  redis: Redis;
 }
 
 export async function profileRoutes(
   app: FastifyInstance,
-  { credentialsRoot }: ProfileRoutesOptions,
+  { cacheTtlSeconds, credentialsRoot, redis }: ProfileRoutesOptions,
 ) {
+  const cache = new ProfileDiscoveryCache(redis, cacheTtlSeconds);
+  app.addHook('onClose', () => cache.close());
+
   app.post(
     '/lookup',
     { schema: { tags: ['profiles'] } },
     async (request, reply) => {
       const input = profileLookupSchema.parse(request.body);
-      const hasCredential = await hasPlatformCredential(
-        credentialsRoot,
-        input.platform,
-      );
       const abortController = new AbortController();
       const abortDiscovery = () => {
         if (!reply.raw.writableFinished) abortController.abort();
@@ -33,12 +36,21 @@ export async function profileRoutes(
       reply.raw.once('close', abortDiscovery);
 
       try {
-        return await discoverProfileMedia(
+        const credential = await platformCredentialFile(
+          credentialsRoot,
+          input.platform,
+        );
+        return await cache.page(
           input,
-          hasCredential
-            ? platformCredentialPath(credentialsRoot, input.platform)
-            : undefined,
+          credential?.version ?? 'public',
           abortController.signal,
+          (cursor, signal) =>
+            discoverProfileMedia(
+              { ...input, cursor },
+              credential?.path,
+              signal,
+              PROFILE_DISCOVERY_CACHE_ITEMS,
+            ),
         );
       } catch (error) {
         if (error instanceof InvalidProfileCursorError) {

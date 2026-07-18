@@ -48,6 +48,7 @@ interface ApiConfig {
   databaseUrl: string;
   mediaRoot: string;
   mediaStorage: MediaStorageOptions;
+  profileDiscoveryCacheTtlSeconds: number;
   redisUrl: string;
   secureCookie: boolean;
   webOrigin: string;
@@ -107,7 +108,9 @@ export async function buildApp(config: ApiConfig) {
   });
   await app.register(profileRoutes, {
     prefix: '/profiles',
+    cacheTtlSeconds: config.profileDiscoveryCacheTtlSeconds,
     credentialsRoot: config.credentialsRoot,
+    redis,
   });
   await app.register(mediaRoutes, {
     prefix: '/media-items',

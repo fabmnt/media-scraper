@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { PLATFORM_CREDENTIALS, type Platform } from '@media-scraper/shared';
 
@@ -108,15 +108,19 @@ export function platformCredentialPath(
   return join(credentialsRoot, PLATFORM_CREDENTIALS[platform].fileName);
 }
 
-export async function hasPlatformCredential(
+export async function platformCredentialFile(
   credentialsRoot: string,
   platform: Platform,
 ) {
+  const path = platformCredentialPath(credentialsRoot, platform);
   try {
-    await access(platformCredentialPath(credentialsRoot, platform));
-    return true;
+    const { ino, mtimeMs, size } = await stat(path);
+    return {
+      path,
+      version: `${String(ino)}:${String(mtimeMs)}:${String(size)}`,
+    };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
   }
 }

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import {
   MAX_PROFILE_MEDIA,
@@ -22,7 +23,6 @@ const PROFILE_RESOLUTION_TIMEOUT_MS = 30_000;
 const MAX_CONCURRENT_DISCOVERY_PROCESSES = 2;
 const MAX_DISCOVERY_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_PROFILE_PAGE_BYTES = 2 * 1024 * 1024;
-const PROFILE_PAGE_FETCH_SIZE = MAX_PROFILE_MEDIA + 1;
 const INSTAGRAM_PROFILE_ID_PATTERNS = [
   /"profile_id":"(\d+)"/,
   /"page_id":"profilePage_(\d+)"/,
@@ -321,21 +321,23 @@ async function extractProfileSource(
   platform: Platform,
   url: string,
   offset: number,
+  pageSize: number,
   authenticationArguments: string[],
   signal?: AbortSignal,
 ) {
-  if (offset > Number.MAX_SAFE_INTEGER - PROFILE_PAGE_FETCH_SIZE) {
+  const fetchSize = pageSize + 1;
+  if (offset > Number.MAX_SAFE_INTEGER - fetchSize) {
     throw new InvalidProfileCursorError(
       'The profile continuation cursor is invalid.',
     );
   }
   const rangeStart = offset + 1;
-  const rangeEnd = offset + PROFILE_PAGE_FETCH_SIZE;
+  const rangeEnd = offset + fetchSize;
   const postRange =
     platform === 'tiktok'
-      ? `1-${String(PROFILE_PAGE_FETCH_SIZE)}`
+      ? `1-${String(fetchSize)}`
       : `${String(rangeStart)}-${String(rangeEnd)}`;
-  const maxPosts = platform === 'tiktok' ? PROFILE_PAGE_FETCH_SIZE : rangeEnd;
+  const maxPosts = platform === 'tiktok' ? fetchSize : rangeEnd;
 
   let stdout: string;
   await acquireDiscoverySlot(signal);
@@ -451,6 +453,7 @@ export async function discoverProfileMedia(
   { platform, username, cursor }: ProfileLookup,
   cookiesPath?: string,
   signal?: AbortSignal,
+  pageSize: number = MAX_PROFILE_MEDIA,
 ): Promise<ProfileMediaResults> {
   const sourceCount = platform === 'instagram' ? 2 : 1;
   const cursorContext = { platform, username, sourceCount };
@@ -469,6 +472,7 @@ export async function discoverProfileMedia(
           platform,
           source.url,
           continuation.sources[index]?.offset ?? 0,
+          pageSize,
           authenticationArguments,
           signal,
         );
@@ -496,11 +500,19 @@ export async function discoverProfileMedia(
   const extractionError = sourceResults.flatMap((result) => result.errors)[0];
   if (extractionError) throw extractionError;
 
+  const sourcePageKeys = sourcePages.map((entries) =>
+    entries.map((entry) =>
+      entry
+        ? createHash('sha256').update(entry.sourceUrl).digest('base64url')
+        : undefined,
+    ),
+  );
   const candidates = new Map<string, ProfileMedia>();
   for (const [index, entries] of sourcePages.entries()) {
-    const skippedUrls = new Set(continuation.sources[index]?.skipUrls ?? []);
-    for (const media of entries) {
-      if (media && !skippedUrls.has(media.sourceUrl)) {
+    const skippedKeys = new Set(continuation.sources[index]?.skipKeys ?? []);
+    for (const [entryIndex, media] of entries.entries()) {
+      const key = sourcePageKeys[index]?.[entryIndex];
+      if (media && key && !skippedKeys.has(key)) {
         candidates.set(media.sourceUrl, media);
       }
     }
@@ -509,42 +521,39 @@ export async function discoverProfileMedia(
     .sort((left, right) =>
       (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
     )
-    .slice(0, MAX_PROFILE_MEDIA);
+    .slice(0, pageSize);
 
   const selectedUrls = new Set(items.map((item) => item.sourceUrl));
   let hasContinuation = false;
   const nextSources = sourcePages.map((entries, index): ProfileSourceCursor => {
     const current = continuation.sources[index] ?? {
       offset: 0,
-      skipUrls: [],
+      skipKeys: [],
     };
-    const emittedUrls = new Set(current.skipUrls);
-    for (const entry of entries) {
-      if (entry && selectedUrls.has(entry.sourceUrl)) {
-        emittedUrls.add(entry.sourceUrl);
+    const entryKeys = sourcePageKeys[index] ?? [];
+    const emittedKeys = new Set(current.skipKeys);
+    for (const [entryIndex, entry] of entries.entries()) {
+      const key = entryKeys[entryIndex];
+      if (entry && key && selectedUrls.has(entry.sourceUrl)) {
+        emittedKeys.add(key);
       }
     }
 
     let consumedEntries = 0;
-    for (const entry of entries) {
-      if (entry && !emittedUrls.has(entry.sourceUrl)) break;
+    for (const key of entryKeys) {
+      if (key && !emittedKeys.has(key)) break;
       consumedEntries += 1;
     }
-    const remainingUrls = new Set(
-      entries
-        .slice(consumedEntries)
-        .flatMap((entry) => (entry ? [entry.sourceUrl] : [])),
+    const remainingKeys = new Set(
+      entryKeys.slice(consumedEntries).filter((key) => key !== undefined),
     );
-    const skipUrls = [...emittedUrls].filter((url) => remainingUrls.has(url));
-    if (
-      consumedEntries < entries.length ||
-      entries.length === PROFILE_PAGE_FETCH_SIZE
-    ) {
+    const skipKeys = [...emittedKeys].filter((key) => remainingKeys.has(key));
+    if (consumedEntries < entries.length || entries.length === pageSize + 1) {
       hasContinuation = true;
     }
     return {
       offset: current.offset + consumedEntries,
-      skipUrls,
+      skipKeys,
     };
   });
 
