@@ -12,7 +12,7 @@ import {
 import { InvalidProfileCursorError } from '@media-scraper/extractors';
 import { z } from 'zod';
 
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const CACHE_KEY_PREFIX = `profile-discovery:v${String(CACHE_VERSION)}`;
 const cacheCursorSchema = z.object({
   version: z.literal(CACHE_VERSION),
@@ -22,17 +22,29 @@ const cacheCursorSchema = z.object({
 const cachedSnapshotSchema = z.object({
   platform: platformSchema,
   username: z.string().min(1).max(100),
+  credentialVersion: z.string().min(1).max(200),
   items: z.array(profileMediaSchema).max(PROFILE_DISCOVERY_CACHE_ITEMS),
   sourceCursor: z.string().max(MAX_PROFILE_SOURCE_CURSOR_LENGTH).nullable(),
   nextSnapshotId: z.uuid().nullable(),
 });
 
 type CachedSnapshot = z.infer<typeof cachedSnapshotSchema>;
-type SnapshotIdentity = Pick<ProfileLookup, 'platform' | 'username'>;
+type SnapshotIdentity = Pick<
+  CachedSnapshot,
+  'credentialVersion' | 'platform' | 'username'
+>;
+type SnapshotResult = { id: string; snapshot: CachedSnapshot };
 type SnapshotLoader = (
   cursor: string | undefined,
   signal: AbortSignal,
 ) => Promise<ProfileMediaResults>;
+
+interface InFlightLoad {
+  abortController: AbortController;
+  consumers: number;
+  promise: Promise<SnapshotResult>;
+  settled: boolean;
+}
 
 function invalidCursor(
   message = 'The profile continuation cursor is invalid.',
@@ -63,10 +75,7 @@ function decodeCacheCursor(cursor: string) {
 
 export class ProfileDiscoveryCache {
   private readonly abortController = new AbortController();
-  private readonly inFlight = new Map<
-    string,
-    Promise<{ id: string; snapshot: CachedSnapshot }>
-  >();
+  private readonly inFlight = new Map<string, InFlightLoad>();
 
   constructor(
     private readonly redis: Redis,
@@ -80,12 +89,31 @@ export class ProfileDiscoveryCache {
   async page(
     input: ProfileLookup,
     credentialVersion: string,
+    requestSignal: AbortSignal,
     load: SnapshotLoader,
   ): Promise<ProfileMediaResults> {
+    requestSignal.throwIfAborted();
+    const identity = {
+      credentialVersion,
+      platform: input.platform,
+      username: input.username,
+    };
     if (input.cursor === undefined) {
-      const lookupKey = this.lookupKey(input, credentialVersion);
-      const initial = await this.initialSnapshot(lookupKey, input, load);
-      return this.snapshotPage(initial.id, initial.snapshot, 0, input, load);
+      const lookupKey = this.lookupKey(identity);
+      const initial = await this.initialSnapshot(
+        lookupKey,
+        identity,
+        requestSignal,
+        load,
+      );
+      return this.snapshotPage(
+        initial.id,
+        initial.snapshot,
+        0,
+        identity,
+        requestSignal,
+        load,
+      );
     }
 
     const cursor = decodeCacheCursor(input.cursor);
@@ -95,12 +123,13 @@ export class ProfileDiscoveryCache {
         'This profile result has expired. Find the profile again to refresh it.',
       );
     }
-    this.assertSnapshotIdentity(snapshot, input);
+    this.assertSnapshotIdentity(snapshot, identity);
     return this.snapshotPage(
       cursor.snapshotId,
       snapshot,
       cursor.offset,
-      input,
+      identity,
+      requestSignal,
       load,
     );
   }
@@ -108,6 +137,7 @@ export class ProfileDiscoveryCache {
   private async initialSnapshot(
     lookupKey: string,
     identity: SnapshotIdentity,
+    requestSignal: AbortSignal,
     load: SnapshotLoader,
   ) {
     const cachedId = await this.redis.get(lookupKey);
@@ -120,7 +150,7 @@ export class ProfileDiscoveryCache {
       }
     }
 
-    return this.once(lookupKey, async () => {
+    return this.once(lookupKey, requestSignal, async (loadSignal) => {
       const recheckedId = await this.redis.get(lookupKey);
       if (recheckedId) {
         const snapshot = await this.readSnapshot(recheckedId);
@@ -130,7 +160,7 @@ export class ProfileDiscoveryCache {
         }
       }
 
-      const result = await load(undefined, this.abortController.signal);
+      const result = await load(undefined, loadSignal);
       const created = await this.createSnapshot(identity, result);
       await this.redis.set(lookupKey, created.id, 'EX', this.ttlSeconds);
       return created;
@@ -142,6 +172,7 @@ export class ProfileDiscoveryCache {
     snapshot: CachedSnapshot,
     offset: number,
     identity: SnapshotIdentity,
+    requestSignal: AbortSignal,
     load: SnapshotLoader,
   ): Promise<ProfileMediaResults> {
     if (offset > snapshot.items.length) throw invalidCursor();
@@ -151,9 +182,17 @@ export class ProfileDiscoveryCache {
         snapshotId,
         snapshot,
         identity,
+        requestSignal,
         load,
       );
-      return this.snapshotPage(next.id, next.snapshot, 0, identity, load);
+      return this.snapshotPage(
+        next.id,
+        next.snapshot,
+        0,
+        identity,
+        requestSignal,
+        load,
+      );
     }
 
     const nextOffset = Math.min(
@@ -173,6 +212,7 @@ export class ProfileDiscoveryCache {
     snapshotId: string,
     snapshot: CachedSnapshot,
     identity: SnapshotIdentity,
+    requestSignal: AbortSignal,
     load: SnapshotLoader,
   ) {
     if (!snapshot.sourceCursor) throw invalidCursor();
@@ -185,28 +225,30 @@ export class ProfileDiscoveryCache {
       }
     }
 
-    return this.once(`next:${snapshotId}`, async () => {
-      const current = await this.readSnapshot(snapshotId);
-      if (!current?.sourceCursor) throw invalidCursor();
-      if (current.nextSnapshotId) {
-        const cached = await this.readSnapshot(current.nextSnapshotId);
-        if (cached) {
-          this.assertSnapshotIdentity(cached, identity);
-          return { id: current.nextSnapshotId, snapshot: cached };
+    return this.once(
+      `next:${snapshotId}`,
+      requestSignal,
+      async (loadSignal) => {
+        const current = await this.readSnapshot(snapshotId);
+        if (!current?.sourceCursor) throw invalidCursor();
+        this.assertSnapshotIdentity(current, identity);
+        if (current.nextSnapshotId) {
+          const cached = await this.readSnapshot(current.nextSnapshotId);
+          if (cached) {
+            this.assertSnapshotIdentity(cached, identity);
+            return { id: current.nextSnapshotId, snapshot: cached };
+          }
         }
-      }
 
-      const result = await load(
-        current.sourceCursor,
-        this.abortController.signal,
-      );
-      const created = await this.createSnapshot(identity, result);
-      await this.writeSnapshot(snapshotId, {
-        ...current,
-        nextSnapshotId: created.id,
-      });
-      return created;
-    });
+        const result = await load(current.sourceCursor, loadSignal);
+        const created = await this.createSnapshot(identity, result);
+        await this.writeSnapshot(snapshotId, {
+          ...current,
+          nextSnapshotId: created.id,
+        });
+        return created;
+      },
+    );
   }
 
   private async createSnapshot(
@@ -254,19 +296,20 @@ export class ProfileDiscoveryCache {
   ) {
     if (
       snapshot.platform !== identity.platform ||
-      snapshot.username !== identity.username
+      snapshot.username !== identity.username ||
+      snapshot.credentialVersion !== identity.credentialVersion
     ) {
       throw invalidCursor('The profile cursor does not match this profile.');
     }
   }
 
-  private lookupKey(identity: SnapshotIdentity, credentialVersion: string) {
+  private lookupKey(identity: SnapshotIdentity) {
     const digest = createHash('sha256')
       .update(
         JSON.stringify({
           platform: identity.platform,
           username: identity.username,
-          credentialVersion,
+          credentialVersion: identity.credentialVersion,
         }),
       )
       .digest('hex');
@@ -279,13 +322,63 @@ export class ProfileDiscoveryCache {
 
   private once(
     key: string,
-    operation: () => Promise<{ id: string; snapshot: CachedSnapshot }>,
+    requestSignal: AbortSignal,
+    operation: (signal: AbortSignal) => Promise<SnapshotResult>,
   ) {
-    const active = this.inFlight.get(key);
-    if (active) return active;
+    let active = this.inFlight.get(key);
+    if (!active) {
+      const abortController = new AbortController();
+      const signal = AbortSignal.any([
+        this.abortController.signal,
+        abortController.signal,
+      ]);
+      const load: InFlightLoad = {
+        abortController,
+        consumers: 0,
+        promise: operation(signal).finally(() => {
+          load.settled = true;
+          if (this.inFlight.get(key) === load) this.inFlight.delete(key);
+        }),
+        settled: false,
+      };
+      active = load;
+      this.inFlight.set(key, load);
+    }
 
-    const promise = operation().finally(() => this.inFlight.delete(key));
-    this.inFlight.set(key, promise);
-    return promise;
+    return this.waitForLoad(key, active, requestSignal);
+  }
+
+  private async waitForLoad(
+    key: string,
+    load: InFlightLoad,
+    requestSignal: AbortSignal,
+  ) {
+    if (requestSignal.aborted) {
+      if (!load.settled && load.consumers === 0) {
+        load.abortController.abort(requestSignal.reason);
+        if (this.inFlight.get(key) === load) this.inFlight.delete(key);
+      }
+      requestSignal.throwIfAborted();
+    }
+
+    load.consumers += 1;
+    let abortRequest: () => void = () => undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      abortRequest = () => reject(requestSignal.reason);
+      requestSignal.addEventListener('abort', abortRequest, { once: true });
+    });
+
+    try {
+      return await Promise.race([load.promise, aborted]);
+    } finally {
+      requestSignal.removeEventListener('abort', abortRequest);
+      load.consumers -= 1;
+      if (!load.settled && load.consumers === 0) {
+        load.abortController.abort(
+          new Error('Profile discovery request abandoned'),
+        );
+        if (this.inFlight.get(key) === load) this.inFlight.delete(key);
+      }
+    }
   }
 }

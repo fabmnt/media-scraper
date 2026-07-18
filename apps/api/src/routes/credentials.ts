@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { credentialInputSchema, platformSchema } from '@media-scraper/shared';
 import {
   deletePlatformCredential,
-  hasPlatformCredential,
+  platformCredentialFile,
   savePlatformCredential,
 } from '../platform-cookies.js';
 
@@ -17,7 +17,9 @@ export async function credentialRoutes(
   app.get<{ Params: CredentialRouteParams }>('/:platform', async (request) => {
     const platform = platformSchema.parse(request.params.platform);
     return {
-      configured: await hasPlatformCredential(credentialsRoot, platform),
+      configured: Boolean(
+        await platformCredentialFile(credentialsRoot, platform),
+      ),
     };
   });
 
