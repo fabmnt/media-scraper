@@ -3,29 +3,63 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   SUPPORTED_PLATFORMS,
   type Platform,
+  type ProfileLookupInput,
   type ProfileMedia,
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
+const PROFILE_QUEUE_CONCURRENCY = 4;
+
 export function ProfileCollectionForm() {
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [username, setUsername] = useState('');
+  const [media, setMedia] = useState<ProfileMedia[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [activeLookup, setActiveLookup] = useState<
+    Omit<ProfileLookupInput, 'cursor'> | undefined
+  >();
   const [selectedUrls, setSelectedUrls] = useState<string[]>([]);
   const [queueMessage, setQueueMessage] = useState('');
   const queryClient = useQueryClient();
   const discovery = useMutation({
     mutationFn: api.discoverProfile,
-    onSuccess: () => {
+    onMutate: (input) => {
+      if (input.cursor) return;
+      setMedia([]);
+      setNextCursor(null);
+      setActiveLookup({ platform: input.platform, username: input.username });
       setSelectedUrls([]);
       setQueueMessage('');
+    },
+    onSuccess: (result, input) => {
+      setMedia((current) => {
+        if (!input.cursor) return result.items;
+        const mediaByUrl = new Map(
+          current.map((item) => [item.sourceUrl, item]),
+        );
+        for (const item of result.items) mediaByUrl.set(item.sourceUrl, item);
+        return [...mediaByUrl.values()];
+      });
+      setNextCursor(result.nextCursor);
     },
   });
   const queue = useMutation({
     mutationFn: async (media: ProfileMedia[]) => {
-      const results = await Promise.allSettled(
-        media.map((item) => api.createCollection({ url: item.sourceUrl })),
-      );
+      const results: PromiseSettledResult<unknown>[] = [];
+      for (
+        let offset = 0;
+        offset < media.length;
+        offset += PROFILE_QUEUE_CONCURRENCY
+      ) {
+        results.push(
+          ...(await Promise.allSettled(
+            media
+              .slice(offset, offset + PROFILE_QUEUE_CONCURRENCY)
+              .map((item) => api.createCollection({ url: item.sourceUrl })),
+          )),
+        );
+      }
       const queuedUrls = media.flatMap((item, index) =>
         results[index]?.status === 'fulfilled' ? [item.sourceUrl] : [],
       );
@@ -55,7 +89,6 @@ export function ProfileCollectionForm() {
     },
   });
 
-  const media = discovery.data?.items ?? [];
   const selectedUrlSet = new Set(selectedUrls);
   const selectedMedia = media.filter((item) =>
     selectedUrlSet.has(item.sourceUrl),
@@ -64,6 +97,11 @@ export function ProfileCollectionForm() {
   function findProfile(event: FormEvent) {
     event.preventDefault();
     discovery.mutate({ platform, username });
+  }
+
+  function loadMore() {
+    if (!activeLookup || !nextCursor) return;
+    discovery.mutate({ ...activeLookup, cursor: nextCursor });
   }
 
   function toggleSelection(sourceUrl: string) {
@@ -119,11 +157,14 @@ export function ProfileCollectionForm() {
         </p>
       )}
 
-      {discovery.data && media.length === 0 && (
-        <div className="empty-state">
-          No public media was found for this profile.
-        </div>
-      )}
+      {activeLookup &&
+        !discovery.isPending &&
+        media.length === 0 &&
+        !nextCursor && (
+          <div className="empty-state">
+            No public media was found for this profile.
+          </div>
+        )}
 
       {media.length > 0 && (
         <>
@@ -205,6 +246,18 @@ export function ProfileCollectionForm() {
             })}
           </div>
         </>
+      )}
+
+      {nextCursor && (
+        <div className="profile-load-more">
+          <button
+            disabled={discovery.isPending}
+            onClick={loadMore}
+            type="button"
+          >
+            {discovery.isPending ? 'Loading more…' : 'Load more'}
+          </button>
+        </div>
       )}
 
       {queue.error && (
