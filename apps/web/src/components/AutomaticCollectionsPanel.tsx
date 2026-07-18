@@ -11,6 +11,8 @@ import {
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
+const AUTOMATIC_PROFILE_STATUS_REFETCH_MS = 15_000;
+
 export function AutomaticCollectionsPanel() {
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [username, setUsername] = useState('');
@@ -20,6 +22,7 @@ export function AutomaticCollectionsPanel() {
   const profiles = useQuery({
     queryKey: queryKeys.automaticProfiles,
     queryFn: api.listAutomaticProfiles,
+    refetchInterval: AUTOMATIC_PROFILE_STATUS_REFETCH_MS,
   });
   const createProfile = useMutation({
     mutationFn: api.createAutomaticProfile,
@@ -35,6 +38,7 @@ export function AutomaticCollectionsPanel() {
     },
   });
   const updateProfile = useMutation({
+    onMutate: () => setMessage(''),
     mutationFn: ({
       id,
       input,
@@ -49,6 +53,7 @@ export function AutomaticCollectionsPanel() {
     },
   });
   const deleteProfile = useMutation({
+    onMutate: () => setMessage(''),
     mutationFn: api.deleteAutomaticProfile,
     onSettled: async () => {
       await queryClient.invalidateQueries({
@@ -57,6 +62,7 @@ export function AutomaticCollectionsPanel() {
     },
   });
   const runProfile = useMutation({
+    onMutate: () => setMessage(''),
     mutationFn: api.runAutomaticProfile,
     onSuccess: () => setMessage('Profile check queued.'),
   });

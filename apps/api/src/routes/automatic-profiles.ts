@@ -72,14 +72,17 @@ export async function automaticProfileRoutes(
     }
 
     try {
-      const nextCheckAt = await upsertAutomaticProfileScheduler(queue, profile);
+      const nextCheckAt = await upsertAutomaticProfileScheduler(
+        queue,
+        profile,
+        true,
+      );
       const [scheduledProfile] = await db
         .update(automaticProfiles)
         .set({ nextCheckAt, updatedAt: new Date() })
         .where(eq(automaticProfiles.id, profile.id))
         .returning();
       profile = scheduledProfile ?? profile;
-      await queueAutomaticProfileCheck(queue, profile.id);
     } catch (error) {
       request.log.error(error, 'Could not schedule automatic profile');
       throw new AutomaticProfileQueueError(
@@ -133,17 +136,29 @@ export async function automaticProfileRoutes(
 
   app.delete('/:id', async (request, reply) => {
     const { id } = automaticProfileParamsSchema.parse(request.params);
-    const [deletedProfile] = await db
-      .delete(automaticProfiles)
+    const [profile] = await db
+      .update(automaticProfiles)
+      .set({ enabled: false, nextCheckAt: null, updatedAt: new Date() })
       .where(eq(automaticProfiles.id, id))
       .returning({ id: automaticProfiles.id });
-    if (!deletedProfile) {
+    if (!profile) {
       return reply.code(404).send({ message: 'Automatic profile not found' });
     }
-    await removeAutomaticProfileScheduler(queue, id).catch((error) =>
-      request.log.warn(error, 'Could not remove stale automatic schedule'),
-    );
-    return reply.code(204).send();
+    try {
+      await removeAutomaticProfileScheduler(queue, profile.id);
+    } catch (error) {
+      request.log.error(error, 'Could not remove automatic profile schedule');
+      throw new AutomaticProfileQueueError(
+        'Automatic collection could not be removed. Try again shortly.',
+      );
+    }
+    const [deletedProfile] = await db
+      .delete(automaticProfiles)
+      .where(eq(automaticProfiles.id, profile.id))
+      .returning({ id: automaticProfiles.id });
+    return deletedProfile
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Automatic profile not found' });
   });
 
   app.post('/:id/run', async (request, reply) => {

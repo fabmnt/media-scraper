@@ -16,6 +16,7 @@ interface ScheduledProfile {
 export async function upsertAutomaticProfileScheduler(
   queue: Queue<AutomaticProfileJobPayload>,
   profile: ScheduledProfile,
+  runImmediately = false,
 ) {
   const job = await queue.upsertJobScheduler(
     automaticProfileSchedulerId(profile.id),
@@ -26,6 +27,10 @@ export async function upsertAutomaticProfileScheduler(
       opts: AUTOMATIC_PROFILE_JOB_OPTIONS,
     },
   );
+  if (runImmediately) {
+    await job.promote();
+    return new Date();
+  }
   return new Date(job.timestamp + (job.opts.delay ?? 0));
 }
 

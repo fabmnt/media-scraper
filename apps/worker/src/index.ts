@@ -60,6 +60,12 @@ const automaticProfileQueue = new Queue<AutomaticProfileJobPayload>(
   AUTOMATIC_PROFILE_QUEUE_NAME,
   { connection: redis },
 );
+collectionQueue.on('error', (error) => {
+  console.error('Collection queue error', error);
+});
+automaticProfileQueue.on('error', (error) => {
+  console.error('Automatic profile queue error', error);
+});
 const [reconciledCollectionCount, reconciledProfileCount] = await Promise.all([
   reconcileQueuedCollections(database.db, collectionQueue),
   reconcileAutomaticProfileSchedulers(database.db, automaticProfileQueue),

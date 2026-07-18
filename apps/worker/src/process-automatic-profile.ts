@@ -11,12 +11,14 @@ import {
 } from '@media-scraper/database';
 import { discoverProfileMedia } from '@media-scraper/extractors';
 import {
-  COLLECTION_JOB_OPTIONS,
-  COLLECTION_QUEUE_NAME,
   MAX_PROFILE_MEDIA,
   PLATFORM_CREDENTIALS,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
+import {
+  ensureCollectionQueued,
+  type QueuedCollection,
+} from './collection-queue.js';
 
 const MAX_ERROR_LENGTH = 4_000;
 const MILLISECONDS_PER_MINUTE = 60_000;
@@ -45,30 +47,13 @@ async function credentialPath(
 
 async function queueCollections(
   collectionQueue: Queue<CollectionJobPayload>,
-  pendingCollections: Array<{
-    id: string;
-    platform: CollectionJobPayload['platform'];
-    sourceUrl: string;
-  }>,
+  pendingCollections: QueuedCollection[],
   db: Database,
 ) {
   const results = await Promise.allSettled(
-    pendingCollections.map(async (collection) => {
-      try {
-        await collectionQueue.add(
-          COLLECTION_QUEUE_NAME,
-          {
-            collectionId: collection.id,
-            platform: collection.platform,
-            url: collection.sourceUrl,
-          },
-          { ...COLLECTION_JOB_OPTIONS, jobId: collection.id },
-        );
-      } catch (error) {
-        const existingJob = await collectionQueue.getJob(collection.id);
-        if (!existingJob) throw error;
-      }
-    }),
+    pendingCollections.map((collection) =>
+      ensureCollectionQueued(collectionQueue, collection),
+    ),
   );
   const failedIds = results.flatMap((result, index) => {
     const collection = pendingCollections[index];
@@ -137,8 +122,12 @@ export async function processAutomaticProfile(
               ),
             db
               .select({
+                id: collections.id,
+                origin: collections.origin,
+                platform: collections.platform,
                 sourceId: collections.discoveredSourceId,
                 sourceUrl: collections.sourceUrl,
+                status: collections.status,
               })
               .from(collections)
               .where(
@@ -151,6 +140,22 @@ export async function processAutomaticProfile(
                 ),
               ),
           ]);
+    const failedAutomaticCollections = collectionRows.filter(
+      (collection) =>
+        collection.origin === 'automatic' && collection.status === 'failed',
+    );
+    if (failedAutomaticCollections.length > 0) {
+      await db
+        .update(collections)
+        .set({ status: 'queued', errorMessage: null, updatedAt: new Date() })
+        .where(
+          inArray(
+            collections.id,
+            failedAutomaticCollections.map((collection) => collection.id),
+          ),
+        );
+      await queueCollections(collectionQueue, failedAutomaticCollections, db);
+    }
     const knownSourceIds = new Set([
       ...collectedRows.map((item) => item.sourceId),
       ...collectionRows.flatMap((item) =>
@@ -203,8 +208,13 @@ export async function processAutomaticProfile(
         updatedAt: checkedAt,
       })
       .where(eq(automaticProfiles.id, profile.id));
-    return { queuedCollections: pendingCollections.length };
+    return {
+      queuedCollections:
+        failedAutomaticCollections.length + pendingCollections.length,
+    };
   } catch (error) {
+    if (signal.aborted) throw error;
+
     const checkedAt = new Date();
     const consecutiveFailures = profile.consecutiveFailures + 1;
     const backoffMultiplier = 2 ** Math.min(consecutiveFailures, 10);
