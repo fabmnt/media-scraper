@@ -6,6 +6,7 @@ import {
   type MediaGroupMode,
   type MediaItem,
   type MediaItemGroup,
+  type MediaSort,
   type Platform,
 } from '@media-scraper/shared';
 import { api } from '../api';
@@ -30,6 +31,7 @@ interface LoadedGroupPages {
 export function Gallery() {
   const [platform, setPlatform] = useState<Platform | undefined>();
   const [groupMode, setGroupMode] = useState<MediaGroupMode>('none');
+  const [sortBy, setSortBy] = useState<MediaSort>('collectedAt');
   const [previewItemId, setPreviewItemId] = useState<string>();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -49,15 +51,22 @@ export function Gallery() {
     effectiveGroupMode,
     platform ?? null,
     debouncedSearch,
+    sortBy,
   ]);
   const media = useQuery({
-    queryKey: queryKeys.media(effectiveGroupMode, platform, debouncedSearch),
+    queryKey: queryKeys.media(
+      effectiveGroupMode,
+      platform,
+      debouncedSearch,
+      sortBy,
+    ),
     queryFn: () =>
       api.listMedia({
         groupBy: effectiveGroupMode,
         limit: MEDIA_LIBRARY_PAGE_SIZE,
         platform,
         search: debouncedSearch || undefined,
+        sortBy,
       }),
   });
   const activeRequest = useRef({
@@ -83,6 +92,7 @@ export function Gallery() {
         offset,
         platform,
         search: debouncedSearch || undefined,
+        sortBy,
       }),
     onSuccess: (page, request) => {
       if (
@@ -140,6 +150,7 @@ export function Gallery() {
         groupOffset,
         limit: MEDIA_LIBRARY_PAGE_SIZE,
         platform,
+        sortBy,
       }),
     onSuccess: (page, request) => {
       if (
@@ -268,6 +279,14 @@ export function Gallery() {
                 {item}
               </option>
             ))}
+          </select>
+          <select
+            aria-label="Sort media"
+            onChange={(event) => setSortBy(event.target.value as MediaSort)}
+            value={sortBy}
+          >
+            <option value="collectedAt">Newest collected</option>
+            <option value="publishedAt">Newest published</option>
           </select>
           <select
             aria-label="Group media"

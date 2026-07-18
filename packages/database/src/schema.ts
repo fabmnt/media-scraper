@@ -153,6 +153,11 @@ export const mediaItems = pgTable(
   (table) => [
     uniqueIndex('media_items_source_idx').on(table.platform, table.sourceId),
     index('media_items_collected_at_idx').on(table.collectedAt),
+    index('media_items_published_at_idx').on(
+      table.publishedAt.desc().nullsLast(),
+      table.collectedAt.desc(),
+      table.id.asc(),
+    ),
     index('media_items_caption_trgm_idx').using(
       'gin',
       table.caption.op('gin_trgm_ops'),
@@ -168,6 +173,18 @@ export const mediaItems = pgTable(
     ),
     index('media_items_platform_group_pagination_idx').on(
       table.platform,
+      table.collectedAt.desc(),
+      table.id.asc(),
+    ),
+    index('media_items_author_published_group_pagination_idx').on(
+      sql`nullif(btrim(${table.authorName}), '')`,
+      table.publishedAt.desc().nullsLast(),
+      table.collectedAt.desc(),
+      table.id.asc(),
+    ),
+    index('media_items_platform_published_group_pagination_idx').on(
+      table.platform,
+      table.publishedAt.desc().nullsLast(),
       table.collectedAt.desc(),
       table.id.asc(),
     ),

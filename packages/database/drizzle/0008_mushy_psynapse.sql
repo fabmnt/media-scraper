@@ -1,0 +1,3 @@
+CREATE INDEX "media_items_published_at_idx" ON "media_items" USING btree ("published_at" DESC NULLS LAST,"collected_at" DESC NULLS LAST,"id");--> statement-breakpoint
+CREATE INDEX "media_items_author_published_group_pagination_idx" ON "media_items" USING btree (nullif(btrim("author_name"), ''),"published_at" DESC NULLS LAST,"collected_at" DESC NULLS LAST,"id");--> statement-breakpoint
+CREATE INDEX "media_items_platform_published_group_pagination_idx" ON "media_items" USING btree ("platform","published_at" DESC NULLS LAST,"collected_at" DESC NULLS LAST,"id");

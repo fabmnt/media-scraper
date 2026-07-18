@@ -57,6 +57,13 @@
       "when": 1784404603731,
       "tag": "0007_curious_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784409721083,
+      "tag": "0008_mushy_psynapse",
+      "breakpoints": true
     }
   ]
 }

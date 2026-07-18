@@ -8,6 +8,7 @@ import type {
   CreateCollectionInput,
   MediaGroupMode,
   MediaItemGroups,
+  MediaSort,
   Page,
   Platform,
   ProfileLookupInput,
@@ -132,6 +133,7 @@ export const api = {
     offset?: number;
     platform?: Platform | undefined;
     search?: string | undefined;
+    sortBy?: MediaSort;
   }) =>
     request<MediaItemGroups>(
       `/media-items${pageQuery({
@@ -142,6 +144,7 @@ export const api = {
         offset: filters.offset,
         platform: filters.platform,
         search: filters.search,
+        sortBy: filters.sortBy,
       })}`,
     ),
   deleteMedia: (id: string) =>

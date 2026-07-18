@@ -23,8 +23,10 @@ import {
   MAX_PAGE_SIZE,
   MEDIA_LIBRARY_PAGE_SIZE,
   mediaGroupModeSchema,
+  mediaSortSchema,
   platformSchema,
   type MediaGroupMode,
+  type MediaSort,
   type MediaItem,
   type MediaItemGroup,
   type MediaItemGroups,
@@ -75,6 +77,7 @@ const mediaQuerySchema = z
     search: z.string().trim().min(1).max(200).optional(),
     groupBy: mediaGroupModeSchema.default('none'),
     groupKey: groupKeySchema.optional(),
+    sortBy: mediaSortSchema.default('collectedAt'),
   })
   .superRefine((query, context) => {
     if (query.groupKey && query.groupKey.groupBy !== query.groupBy) {
@@ -156,12 +159,14 @@ async function listSingleGroup({
   groupKey,
   limit,
   offset,
+  sortBy,
 }: {
   db: Database;
   filters: SQL[];
   groupKey?: GroupedKeyPayload | undefined;
   limit: number;
   offset: number;
+  sortBy: MediaSort;
 }): Promise<MediaItemGroup> {
   if (groupKey?.groupBy === 'username') {
     const usernameExpression = sql<
@@ -180,7 +185,15 @@ async function listSingleGroup({
     .select()
     .from(mediaItems)
     .where(filters.length > 0 ? and(...filters) : undefined)
-    .orderBy(desc(mediaItems.collectedAt), asc(mediaItems.id))
+    .orderBy(
+      ...(sortBy === 'publishedAt'
+        ? [
+            sql`${mediaItems.publishedAt} desc nulls last`,
+            desc(mediaItems.collectedAt),
+            asc(mediaItems.id),
+          ]
+        : [desc(mediaItems.collectedAt), asc(mediaItems.id)]),
+    )
     .limit(limit + 1)
     .offset(offset);
   const hasMore = rows.length > limit;
@@ -203,6 +216,7 @@ async function listAllGroups({
   groupOffset,
   limit,
   offset,
+  sortBy,
 }: {
   db: Database;
   filters: SQL[];
@@ -210,6 +224,7 @@ async function listAllGroups({
   groupOffset: number;
   limit: number;
   offset: number;
+  sortBy: MediaSort;
 }): Promise<MediaItemGroups> {
   const usernameExpression = sql<
     string | null
@@ -272,7 +287,11 @@ async function listAllGroups({
       .select({
         ...getTableColumns(mediaItems),
         groupRank:
-          sql<number>`row_number() over (partition by ${groupExpression} order by ${desc(mediaItems.collectedAt)}, ${asc(mediaItems.id)})`.as(
+          sql<number>`row_number() over (partition by ${groupExpression} order by ${
+            sortBy === 'publishedAt'
+              ? sql`${mediaItems.publishedAt} desc nulls last`
+              : desc(mediaItems.collectedAt)
+          }, ${desc(mediaItems.collectedAt)}, ${asc(mediaItems.id)})`.as(
             'group_rank',
           ),
       })
@@ -289,7 +308,15 @@ async function listAllGroups({
         lte(rankedMedia.groupRank, offset + limit + 1),
       ),
     )
-    .orderBy(desc(rankedMedia.collectedAt), asc(rankedMedia.id));
+    .orderBy(
+      ...(sortBy === 'publishedAt'
+        ? [
+            sql`${rankedMedia.publishedAt} desc nulls last`,
+            desc(rankedMedia.collectedAt),
+            asc(rankedMedia.id),
+          ]
+        : [desc(rankedMedia.collectedAt), asc(rankedMedia.id)]),
+    );
   const rowsByGroup = new Map<string, MediaItemRow[]>();
   for (const row of rows) {
     const key = encodeGroupKey(groupDetails(groupBy, row));
@@ -348,6 +375,7 @@ export async function listMediaGroups(
       groupKey: effectiveGroupKey,
       limit: query.limit,
       offset: query.offset,
+      sortBy: query.sortBy,
     });
     return { groups: [group], nextGroupOffset: null };
   }
@@ -359,5 +387,6 @@ export async function listMediaGroups(
     groupOffset: query.groupOffset,
     limit: query.limit,
     offset: query.offset,
+    sortBy: query.sortBy,
   });
 }

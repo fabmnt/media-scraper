@@ -10,6 +10,7 @@ export const COLLECTION_STATUSES = [
 export const COLLECTION_ORIGINS = ['manual', 'automatic'] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const MEDIA_GROUP_MODES = ['none', 'username', 'platform'] as const;
+export const MEDIA_SORT_OPTIONS = ['collectedAt', 'publishedAt'] as const;
 export const MEDIA_MAINTENANCE_TYPES = [
   'delete_local',
   'delete_object',
@@ -61,6 +62,7 @@ export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
 export const collectionOriginSchema = z.enum(COLLECTION_ORIGINS);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
 export const mediaGroupModeSchema = z.enum(MEDIA_GROUP_MODES);
+export const mediaSortSchema = z.enum(MEDIA_SORT_OPTIONS);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
@@ -68,6 +70,7 @@ export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type CollectionOrigin = z.infer<typeof collectionOriginSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
 export type MediaGroupMode = z.infer<typeof mediaGroupModeSchema>;
+export type MediaSort = z.infer<typeof mediaSortSchema>;
 export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
 
 interface PlatformCredentialConfig {
