@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   collectionStatusSchema,
   COLLECTION_QUEUE_NAME,
+  createCollectionBatchSchema,
   createCollectionSchema,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -66,6 +68,58 @@ export async function collectionRoutes(
       nextOffset: hasMore ? query.offset + query.limit : null,
     };
   });
+
+  app.post(
+    '/batch',
+    { schema: { tags: ['collections'] } },
+    async (request, reply) => {
+      const input = createCollectionBatchSchema.parse(request.body);
+      const pendingCollections = input.items.map((item) => ({
+        id: randomUUID(),
+        platform: item.platform,
+        sourceUrl: item.url,
+      }));
+      const createdCollections = await db
+        .insert(collections)
+        .values(pendingCollections)
+        .returning();
+
+      try {
+        await queue.addBulk(
+          pendingCollections.map((collection) => ({
+            name: COLLECTION_QUEUE_NAME,
+            data: {
+              collectionId: collection.id,
+              platform: collection.platform,
+              url: collection.sourceUrl,
+            },
+            opts: jobOptions,
+          })),
+        );
+      } catch (error) {
+        const failedCollections = await db
+          .update(collections)
+          .set({
+            status: 'failed',
+            errorMessage: errorMessage(error),
+            updatedAt: new Date(),
+          })
+          .where(
+            inArray(
+              collections.id,
+              pendingCollections.map((collection) => collection.id),
+            ),
+          )
+          .returning();
+        return reply.code(503).send({
+          message: 'Collections could not be queued',
+          collections: failedCollections.map(serializeCollection),
+        });
+      }
+
+      return reply.code(202).send(createdCollections.map(serializeCollection));
+    },
+  );
 
   app.post(
     '/',

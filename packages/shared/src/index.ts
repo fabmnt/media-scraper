@@ -19,6 +19,7 @@ export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
 export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
+export const MAX_COLLECTION_BATCH_SIZE = 100;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
@@ -88,7 +89,14 @@ export const createCollectionSchema = z
     }),
   );
 
+export const createCollectionBatchSchema = z.object({
+  items: z.array(createCollectionSchema).min(1).max(MAX_COLLECTION_BATCH_SIZE),
+});
+
 export type CreateCollectionInput = z.input<typeof createCollectionSchema>;
+export type CreateCollectionBatchInput = z.input<
+  typeof createCollectionBatchSchema
+>;
 export type CollectionJobPayload = z.output<typeof createCollectionSchema> & {
   collectionId: string;
 };

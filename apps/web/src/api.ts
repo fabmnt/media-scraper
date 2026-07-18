@@ -2,6 +2,7 @@ import type {
   Collection,
   CollectionStatus,
   CredentialStatus,
+  CreateCollectionBatchInput,
   CreateCollectionInput,
   MediaItem,
   Page,
@@ -69,6 +70,12 @@ export const api = {
     request<void>(`/credentials/${platform}`, { method: 'DELETE' }),
   createCollection: (input: CreateCollectionInput) =>
     request<Collection>('/collections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  createCollectionBatch: (input: CreateCollectionBatchInput) =>
+    request<Collection[]>('/collections/batch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
