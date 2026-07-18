@@ -6,14 +6,8 @@ import {
   type Platform,
   type ProfileLookup,
   type ProfileMedia,
-  type ProfileMediaResults,
 } from '@media-scraper/shared';
 import { z } from 'zod';
-import {
-  decodeProfileCursor,
-  encodeProfileCursor,
-  type ProfileSourceCursor,
-} from './profile-pagination.js';
 
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 90_000;
@@ -21,7 +15,6 @@ const PROFILE_RESOLUTION_TIMEOUT_MS = 30_000;
 const MAX_CONCURRENT_DISCOVERY_PROCESSES = 2;
 const MAX_DISCOVERY_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_PROFILE_PAGE_BYTES = 2 * 1024 * 1024;
-const PROFILE_PAGE_FETCH_SIZE = MAX_PROFILE_MEDIA + 1;
 const INSTAGRAM_PROFILE_ID_PATTERNS = [
   /"profile_id":"(\d+)"/,
   /"page_id":"profilePage_(\d+)"/,
@@ -165,66 +158,26 @@ async function instagramProfileId(username: string, signal?: AbortSignal) {
   throw new Error('Instagram profile ID was not found');
 }
 
-interface ProfileSource {
-  url: string;
-  include: (metadata: GalleryMetadata) => boolean;
-}
-
-async function profileSources(
+async function profileUrls(
   platform: Platform,
   username: string,
-  profileIdentifier: string | undefined,
   signal?: AbortSignal,
-): Promise<{
-  profileIdentifier: string | undefined;
-  sources: ProfileSource[];
-}> {
+) {
   const encodedUsername = encodeURIComponent(username);
   switch (platform) {
     case 'instagram': {
-      const identifier =
-        profileIdentifier ??
-        (await instagramProfileId(username, signal)
-          .then((profileId) => `id:${profileId}`)
-          .catch(() => encodedUsername));
-      return {
-        profileIdentifier: identifier.startsWith('id:')
-          ? identifier
-          : undefined,
-        sources: [
-          {
-            url: `https://www.instagram.com/${identifier}/posts/`,
-            include: (metadata) =>
-              metadata.type !== 'reel' &&
-              !metadata.post_url?.includes('/reel/'),
-          },
-          {
-            url: `https://www.instagram.com/${identifier}/reels/`,
-            include: () => true,
-          },
-        ],
-      };
+      const profileIdentifier = await instagramProfileId(username, signal)
+        .then((profileId) => `id:${profileId}`)
+        .catch(() => encodedUsername);
+      return [
+        `https://www.instagram.com/${profileIdentifier}/posts/`,
+        `https://www.instagram.com/${profileIdentifier}/reels/`,
+      ];
     }
     case 'facebook':
-      return {
-        profileIdentifier: undefined,
-        sources: [
-          {
-            url: `https://www.facebook.com/${encodedUsername}/photos`,
-            include: () => true,
-          },
-        ],
-      };
+      return [`https://www.facebook.com/${encodedUsername}/photos`];
     case 'tiktok':
-      return {
-        profileIdentifier: undefined,
-        sources: [
-          {
-            url: `https://www.tiktok.com/@${encodedUsername}/posts`,
-            include: () => true,
-          },
-        ],
-      };
+      return [`https://www.tiktok.com/@${encodedUsername}/posts`];
   }
 }
 
@@ -317,23 +270,10 @@ function assetCount(platform: Platform, metadata: GalleryMetadata) {
 }
 
 async function extractProfileSource(
-  platform: Platform,
   url: string,
-  offset: number,
   authenticationArguments: string[],
   signal?: AbortSignal,
 ) {
-  if (offset > Number.MAX_SAFE_INTEGER - PROFILE_PAGE_FETCH_SIZE) {
-    throw new Error('The profile continuation cursor is invalid.');
-  }
-  const rangeStart = offset + 1;
-  const rangeEnd = offset + PROFILE_PAGE_FETCH_SIZE;
-  const postRange =
-    platform === 'tiktok'
-      ? `1-${String(PROFILE_PAGE_FETCH_SIZE)}`
-      : `${String(rangeStart)}-${String(rangeEnd)}`;
-  const maxPosts = platform === 'tiktok' ? PROFILE_PAGE_FETCH_SIZE : rangeEnd;
-
   let stdout: string;
   await acquireDiscoverySlot(signal);
   try {
@@ -344,11 +284,11 @@ async function extractProfileSource(
         '--no-input',
         '--dump-json',
         '--post-range',
-        postRange,
+        `1-${String(MAX_PROFILE_MEDIA)}`,
         '--option',
-        `max-posts=${String(maxPosts)}`,
+        `max-posts=${String(MAX_PROFILE_MEDIA)}`,
         '--option',
-        `tiktok-range=${String(rangeStart)}-${String(rangeEnd)}`,
+        `tiktok-range=1-${String(MAX_PROFILE_MEDIA)}`,
         ...authenticationArguments,
         url,
       ],
@@ -378,30 +318,50 @@ async function extractProfileSource(
   }
 }
 
-function normalizeSourcePage(
-  messages: z.infer<typeof galleryOutputSchema>,
-  source: ProfileSource,
-  platform: Platform,
-  username: string,
-) {
-  const entries: Array<ProfileMedia | undefined> = [];
+export async function discoverProfileMedia(
+  { platform, username }: ProfileLookup,
+  cookiesPath?: string,
+  signal?: AbortSignal,
+): Promise<ProfileMedia[]> {
+  const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
+  const messages: z.infer<typeof galleryOutputSchema> = [];
+  const extractionErrors: Error[] = [];
+  for (const url of await profileUrls(platform, username, signal)) {
+    try {
+      const sourceMessages = await extractProfileSource(
+        url,
+        authenticationArguments,
+        signal,
+      );
+      for (const message of sourceMessages) {
+        if (message[0] === GALLERY_ERROR_MESSAGE) {
+          extractionErrors.push(new Error(message[1].message));
+        } else {
+          messages.push(message);
+        }
+      }
+    } catch (error) {
+      extractionErrors.push(
+        error instanceof Error ? error : new Error('Profile extraction failed'),
+      );
+    }
+  }
+
   const mediaByUrl = new Map<string, ProfileMedia>();
   let currentMedia: ProfileMedia | undefined;
-
   for (const message of messages) {
     if (message[0] === GALLERY_ERROR_MESSAGE) continue;
 
     if (message[0] === GALLERY_DIRECTORY_MESSAGE) {
       const metadata = message[1];
-      const entryIndex = entries.push(undefined) - 1;
-      const details = sourceDetails(platform, username, metadata);
-      if (!details || !source.include(metadata)) {
+      const source = sourceDetails(platform, username, metadata);
+      if (!source) {
         currentMedia = undefined;
         continue;
       }
 
       const candidate = profileMediaSchema.safeParse({
-        ...details,
+        ...source,
         platform,
         thumbnailUrl: thumbnailUrl(platform, metadata),
         caption:
@@ -421,7 +381,6 @@ function normalizeSourcePage(
 
       currentMedia = mediaByUrl.get(candidate.data.sourceUrl) ?? candidate.data;
       mediaByUrl.set(currentMedia.sourceUrl, currentMedia);
-      entries[entryIndex] = currentMedia;
       continue;
     }
 
@@ -441,116 +400,13 @@ function normalizeSourcePage(
     }
   }
 
-  return entries;
-}
-
-export async function discoverProfileMedia(
-  { platform, username, cursor }: ProfileLookup,
-  cookiesPath?: string,
-  signal?: AbortSignal,
-): Promise<ProfileMediaResults> {
-  const sourceCount = platform === 'instagram' ? 2 : 1;
-  const cursorContext = { platform, username, sourceCount };
-  const continuation = decodeProfileCursor(cursor, cursorContext);
-  const profile = await profileSources(
-    platform,
-    username,
-    continuation.profileIdentifier,
-    signal,
-  );
-  const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
-  const extractionErrors: Error[] = [];
-  const sourcePages: Array<Array<ProfileMedia | undefined>> = [];
-
-  for (const [index, source] of profile.sources.entries()) {
-    try {
-      const messages = await extractProfileSource(
-        platform,
-        source.url,
-        continuation.sources[index]?.offset ?? 0,
-        authenticationArguments,
-        signal,
-      );
-      for (const message of messages) {
-        if (message[0] === GALLERY_ERROR_MESSAGE) {
-          extractionErrors.push(new Error(message[1].message));
-        }
-      }
-      sourcePages.push(
-        normalizeSourcePage(messages, source, platform, username),
-      );
-    } catch (error) {
-      extractionErrors.push(
-        error instanceof Error ? error : new Error('Profile extraction failed'),
-      );
-      sourcePages.push([]);
-    }
-  }
-
-  const candidates = new Map<string, ProfileMedia>();
-  for (const [index, entries] of sourcePages.entries()) {
-    const skippedUrls = new Set(continuation.sources[index]?.skipUrls ?? []);
-    for (const media of entries) {
-      if (media && !skippedUrls.has(media.sourceUrl)) {
-        candidates.set(media.sourceUrl, media);
-      }
-    }
-  }
-  const items = [...candidates.values()]
+  const media = [...mediaByUrl.values()]
     .sort((left, right) =>
       (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
     )
     .slice(0, MAX_PROFILE_MEDIA);
-
-  if (items.length === 0 && extractionErrors[0]) {
+  if (media.length === 0 && extractionErrors[0]) {
     throw extractionErrors[0];
   }
-
-  const selectedUrls = new Set(items.map((item) => item.sourceUrl));
-  let hasContinuation = false;
-  const nextSources = sourcePages.map((entries, index): ProfileSourceCursor => {
-    const current = continuation.sources[index] ?? {
-      offset: 0,
-      skipUrls: [],
-    };
-    const emittedUrls = new Set(current.skipUrls);
-    for (const entry of entries) {
-      if (entry && selectedUrls.has(entry.sourceUrl)) {
-        emittedUrls.add(entry.sourceUrl);
-      }
-    }
-
-    let consumedEntries = 0;
-    for (const entry of entries) {
-      if (entry && !emittedUrls.has(entry.sourceUrl)) break;
-      consumedEntries += 1;
-    }
-    const remainingUrls = new Set(
-      entries
-        .slice(consumedEntries)
-        .flatMap((entry) => (entry ? [entry.sourceUrl] : [])),
-    );
-    const skipUrls = [...emittedUrls].filter((url) => remainingUrls.has(url));
-    if (
-      consumedEntries < entries.length ||
-      entries.length === PROFILE_PAGE_FETCH_SIZE
-    ) {
-      hasContinuation = true;
-    }
-    return {
-      offset: current.offset + consumedEntries,
-      skipUrls,
-    };
-  });
-
-  return {
-    items,
-    nextCursor: hasContinuation
-      ? encodeProfileCursor(
-          cursorContext,
-          nextSources,
-          profile.profileIdentifier,
-        )
-      : null,
-  };
+  return media;
 }

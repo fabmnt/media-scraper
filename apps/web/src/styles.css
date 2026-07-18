@@ -499,11 +499,6 @@ footer {
   overflow: hidden;
   font-size: 10px;
 }
-.profile-load-more {
-  display: flex;
-  justify-content: center;
-  margin-top: 22px;
-}
 .profile-collector .empty-state {
   min-height: 120px;
   margin-top: 24px;
