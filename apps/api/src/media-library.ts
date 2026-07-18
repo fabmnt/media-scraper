@@ -32,6 +32,7 @@ import {
 import { serializeMediaItem } from './serialization.js';
 
 const GROUP_KEY_MAX_LENGTH = 2_048;
+const MEDIA_GROUP_PAGE_SIZE = 18;
 const UNGROUPED_LABEL = 'All media';
 const UNKNOWN_USERNAME_LABEL = 'Unknown username';
 const groupedKeyPayloadSchema = z.discriminatedUnion('groupBy', [
@@ -69,6 +70,7 @@ const mediaQuerySchema = z
       .max(MAX_PAGE_SIZE)
       .default(MEDIA_LIBRARY_PAGE_SIZE),
     offset: z.coerce.number().int().nonnegative().default(0),
+    groupOffset: z.coerce.number().int().nonnegative().default(0),
     platform: platformSchema.optional(),
     search: z.string().trim().min(1).max(200).optional(),
     groupBy: mediaGroupModeSchema.default('none'),
@@ -198,19 +200,73 @@ async function listAllGroups({
   db,
   filters,
   groupBy,
+  groupOffset,
   limit,
   offset,
 }: {
   db: Database;
   filters: SQL[];
   groupBy: GroupedMediaMode;
+  groupOffset: number;
   limit: number;
   offset: number;
-}): Promise<MediaItemGroup[]> {
-  const groupExpression =
+}): Promise<MediaItemGroups> {
+  const usernameExpression = sql<
+    string | null
+  >`nullif(btrim(${mediaItems.authorName}), '')`;
+  const discoveredGroups =
     groupBy === 'username'
-      ? sql<string | null>`nullif(btrim(${mediaItems.authorName}), '')`
-      : mediaItems.platform;
+      ? await db
+          .selectDistinct({ value: usernameExpression })
+          .from(mediaItems)
+          .where(filters.length > 0 ? and(...filters) : undefined)
+          .orderBy(asc(usernameExpression))
+          .limit(MEDIA_GROUP_PAGE_SIZE + 1)
+          .offset(groupOffset)
+      : await db
+          .selectDistinct({ value: mediaItems.platform })
+          .from(mediaItems)
+          .where(filters.length > 0 ? and(...filters) : undefined)
+          .orderBy(asc(mediaItems.platform))
+          .limit(MEDIA_GROUP_PAGE_SIZE + 1)
+          .offset(groupOffset);
+  const hasMoreGroups = discoveredGroups.length > MEDIA_GROUP_PAGE_SIZE;
+  const groupPayloads: GroupedKeyPayload[] = discoveredGroups
+    .slice(0, MEDIA_GROUP_PAGE_SIZE)
+    .map(({ value }) =>
+      groupBy === 'username'
+        ? { groupBy, value }
+        : { groupBy, value: platformSchema.parse(value) },
+    );
+  if (groupPayloads.length === 0) {
+    return { groups: [], nextGroupOffset: null };
+  }
+
+  const groupExpression =
+    groupBy === 'username' ? usernameExpression : mediaItems.platform;
+  if (groupBy === 'username') {
+    const usernames = groupPayloads.flatMap((group) =>
+      group.groupBy === 'username' && group.value !== null ? [group.value] : [],
+    );
+    const includesUnknown = groupPayloads.some(
+      (group) => group.groupBy === 'username' && group.value === null,
+    );
+    const selectedGroupsFilter = includesUnknown
+      ? or(
+          isNull(usernameExpression),
+          usernames.length > 0
+            ? inArray(usernameExpression, usernames)
+            : undefined,
+        )
+      : inArray(usernameExpression, usernames);
+    if (selectedGroupsFilter) filters.push(selectedGroupsFilter);
+  } else {
+    const platforms = groupPayloads.flatMap((group) =>
+      group.groupBy === 'platform' ? [group.value] : [],
+    );
+    filters.push(inArray(mediaItems.platform, platforms));
+  }
+
   const rankedMedia = db.$with('ranked_media').as(
     db
       .select({
@@ -221,7 +277,7 @@ async function listAllGroups({
           ),
       })
       .from(mediaItems)
-      .where(filters.length > 0 ? and(...filters) : undefined),
+      .where(and(...filters)),
   );
   const rows = await db
     .with(rankedMedia)
@@ -234,41 +290,47 @@ async function listAllGroups({
       ),
     )
     .orderBy(desc(rankedMedia.collectedAt), asc(rankedMedia.id));
-  const rowsByGroup = new Map<
-    string,
-    { payload: GroupedKeyPayload; rows: MediaItemRow[] }
-  >();
+  const rowsByGroup = new Map<string, MediaItemRow[]>();
   for (const row of rows) {
-    const payload = groupDetails(groupBy, row);
-    const key = encodeGroupKey(payload);
-    const group = rowsByGroup.get(key) ?? { payload, rows: [] };
-    group.rows.push(row);
-    rowsByGroup.set(key, group);
+    const key = encodeGroupKey(groupDetails(groupBy, row));
+    const groupRows = rowsByGroup.get(key) ?? [];
+    groupRows.push(row);
+    rowsByGroup.set(key, groupRows);
   }
 
-  const groupRows = [...rowsByGroup.entries()].map(([key, group]) => ({
-    key,
-    payload: group.payload,
-    rows: group.rows.slice(0, limit),
-    nextOffset: group.rows.length > limit ? offset + limit : null,
-  }));
+  const groupsWithRows = groupPayloads.flatMap((payload) => {
+    const key = encodeGroupKey(payload);
+    const groupRows = rowsByGroup.get(key);
+    return groupRows
+      ? [
+          {
+            key,
+            payload,
+            rows: groupRows.slice(0, limit),
+            nextOffset: groupRows.length > limit ? offset + limit : null,
+          },
+        ]
+      : [];
+  });
   const serializedItems = await serializeMediaRows(
     db,
-    groupRows.flatMap((group) => group.rows),
+    groupsWithRows.flatMap((group) => group.rows),
   );
   const serializedItemsById = new Map(
     serializedItems.map((item) => [item.id, item]),
   );
-  const groups = groupRows.map((group): MediaItemGroup => ({
-    key: group.key,
-    label: group.payload.value ?? UNKNOWN_USERNAME_LABEL,
-    items: group.rows.flatMap((row) => {
-      const item = serializedItemsById.get(row.id);
-      return item ? [item] : [];
-    }),
-    nextOffset: group.nextOffset,
-  }));
-  return groups.sort((left, right) => left.label.localeCompare(right.label));
+  return {
+    groups: groupsWithRows.map((group): MediaItemGroup => ({
+      key: group.key,
+      label: group.payload.value ?? UNKNOWN_USERNAME_LABEL,
+      items: group.rows.flatMap((row) => {
+        const item = serializedItemsById.get(row.id);
+        return item ? [item] : [];
+      }),
+      nextOffset: group.nextOffset,
+    })),
+    nextGroupOffset: hasMoreGroups ? groupOffset + MEDIA_GROUP_PAGE_SIZE : null,
+  };
 }
 
 export async function listMediaGroups(
@@ -277,23 +339,25 @@ export async function listMediaGroups(
 ): Promise<MediaItemGroups> {
   const query = mediaQuerySchema.parse(rawQuery);
   const filters = buildFilters(query);
-  const groups =
-    query.groupBy === 'none' || query.groupKey
-      ? [
-          await listSingleGroup({
-            db,
-            filters,
-            groupKey: query.groupKey,
-            limit: query.limit,
-            offset: query.offset,
-          }),
-        ]
-      : await listAllGroups({
-          db,
-          filters,
-          groupBy: query.groupBy,
-          limit: query.limit,
-          offset: query.offset,
-        });
-  return { groups };
+  const effectiveGroupBy = query.search ? 'none' : query.groupBy;
+  const effectiveGroupKey = query.search ? undefined : query.groupKey;
+  if (effectiveGroupBy === 'none' || effectiveGroupKey) {
+    const group = await listSingleGroup({
+      db,
+      filters,
+      groupKey: effectiveGroupKey,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    return { groups: [group], nextGroupOffset: null };
+  }
+
+  return listAllGroups({
+    db,
+    filters,
+    groupBy: effectiveGroupBy,
+    groupOffset: query.groupOffset,
+    limit: query.limit,
+    offset: query.offset,
+  });
 }

@@ -104,6 +104,7 @@ export const api = {
   listMedia: (filters: {
     groupBy?: MediaGroupMode;
     groupKey?: string;
+    groupOffset?: number;
     limit?: number;
     offset?: number;
     platform?: Platform | undefined;
@@ -113,6 +114,7 @@ export const api = {
       `/media-items${pageQuery({
         groupBy: filters.groupBy,
         groupKey: filters.groupKey,
+        groupOffset: filters.groupOffset,
         limit: filters.limit,
         offset: filters.offset,
         platform: filters.platform,

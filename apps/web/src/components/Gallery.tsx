@@ -20,8 +20,10 @@ interface LoadedGroupPage {
 }
 
 interface LoadedGroupPages {
+  additionalGroups: MediaItemGroup[];
   dataUpdatedAt: number;
   groups: Record<string, LoadedGroupPage>;
+  nextGroupOffset: number | null;
   requestKey: string;
 }
 
@@ -42,16 +44,17 @@ export function Gallery() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
+  const effectiveGroupMode = debouncedSearch ? 'none' : groupMode;
   const requestKey = JSON.stringify([
-    groupMode,
+    effectiveGroupMode,
     platform ?? null,
     debouncedSearch,
   ]);
   const media = useQuery({
-    queryKey: queryKeys.media(groupMode, platform, debouncedSearch),
+    queryKey: queryKeys.media(effectiveGroupMode, platform, debouncedSearch),
     queryFn: () =>
       api.listMedia({
-        groupBy: groupMode,
+        groupBy: effectiveGroupMode,
         limit: MEDIA_LIBRARY_PAGE_SIZE,
         platform,
         search: debouncedSearch || undefined,
@@ -74,8 +77,8 @@ export function Gallery() {
       requestKey: string;
     }) =>
       api.listMedia({
-        groupBy: groupMode,
-        ...(groupMode === 'none' ? {} : { groupKey }),
+        groupBy: effectiveGroupMode,
+        ...(effectiveGroupMode === 'none' ? {} : { groupKey }),
         limit: MEDIA_LIBRARY_PAGE_SIZE,
         offset,
         platform,
@@ -92,12 +95,18 @@ export function Gallery() {
       if (!nextGroup) return;
 
       setLoadedPages((current) => {
-        const currentGroups =
+        const currentPages =
           current?.requestKey === request.requestKey &&
           current.dataUpdatedAt === request.dataUpdatedAt
-            ? current.groups
-            : {};
-        const previousGroup = currentGroups[request.groupKey];
+            ? current
+            : {
+                additionalGroups: [],
+                dataUpdatedAt: request.dataUpdatedAt,
+                groups: {},
+                nextGroupOffset: media.data?.nextGroupOffset ?? null,
+                requestKey: request.requestKey,
+              };
+        const previousGroup = currentPages.groups[request.groupKey];
         const itemsById = new Map(
           previousGroup?.items.map((item) => [item.id, item]),
         );
@@ -105,13 +114,61 @@ export function Gallery() {
         return {
           dataUpdatedAt: request.dataUpdatedAt,
           requestKey: request.requestKey,
+          additionalGroups: currentPages.additionalGroups,
           groups: {
-            ...currentGroups,
+            ...currentPages.groups,
             [request.groupKey]: {
               items: [...itemsById.values()],
               nextOffset: nextGroup.nextOffset,
             },
           },
+          nextGroupOffset: currentPages.nextGroupOffset,
+        };
+      });
+    },
+  });
+  const loadMoreGroups = useMutation({
+    mutationFn: ({
+      groupOffset,
+    }: {
+      dataUpdatedAt: number;
+      groupOffset: number;
+      requestKey: string;
+    }) =>
+      api.listMedia({
+        groupBy: effectiveGroupMode,
+        groupOffset,
+        limit: MEDIA_LIBRARY_PAGE_SIZE,
+        platform,
+      }),
+    onSuccess: (page, request) => {
+      if (
+        request.requestKey !== activeRequest.current.requestKey ||
+        request.dataUpdatedAt !== activeRequest.current.dataUpdatedAt
+      ) {
+        return;
+      }
+
+      setLoadedPages((current) => {
+        const currentPages =
+          current?.requestKey === request.requestKey &&
+          current.dataUpdatedAt === request.dataUpdatedAt
+            ? current
+            : {
+                additionalGroups: [],
+                dataUpdatedAt: request.dataUpdatedAt,
+                groups: {},
+                nextGroupOffset: media.data?.nextGroupOffset ?? null,
+                requestKey: request.requestKey,
+              };
+        const groupsByKey = new Map(
+          currentPages.additionalGroups.map((group) => [group.key, group]),
+        );
+        for (const group of page.groups) groupsByKey.set(group.key, group);
+        return {
+          ...currentPages,
+          additionalGroups: [...groupsByKey.values()],
+          nextGroupOffset: page.nextGroupOffset,
         };
       });
     },
@@ -139,13 +196,28 @@ export function Gallery() {
     });
   }
 
+  function loadGroups() {
+    if (nextGroupOffset === null) return;
+    loadMoreGroups.mutate({
+      dataUpdatedAt: media.dataUpdatedAt,
+      groupOffset: nextGroupOffset,
+      requestKey,
+    });
+  }
+
   const currentLoadedPages =
     loadedPages?.requestKey === requestKey &&
     loadedPages.dataUpdatedAt === media.dataUpdatedAt
-      ? loadedPages.groups
-      : {};
-  const groups = (media.data?.groups ?? []).map((group) => {
-    const loadedGroup = currentLoadedPages[group.key];
+      ? loadedPages
+      : undefined;
+  const groupsByKey = new Map(
+    (media.data?.groups ?? []).map((group) => [group.key, group]),
+  );
+  for (const group of currentLoadedPages?.additionalGroups ?? []) {
+    groupsByKey.set(group.key, group);
+  }
+  const groups = [...groupsByKey.values()].map((group) => {
+    const loadedGroup = currentLoadedPages?.groups[group.key];
     if (!loadedGroup) return group;
 
     const itemsById = new Map(group.items.map((item) => [item.id, item]));
@@ -156,6 +228,9 @@ export function Gallery() {
       nextOffset: loadedGroup.nextOffset,
     };
   });
+  const nextGroupOffset = currentLoadedPages
+    ? currentLoadedPages.nextGroupOffset
+    : (media.data?.nextGroupOffset ?? null);
   const items = groups.flatMap((group) => group.items);
 
   return (
@@ -209,9 +284,19 @@ export function Gallery() {
         {media.isLoading && (
           <p className="empty-state">Loading your library…</p>
         )}
-        {(media.error || remove.error || loadMore.error) && (
+        {(media.error ||
+          remove.error ||
+          loadMore.error ||
+          loadMoreGroups.error) && (
           <p className="error">
-            {(media.error ?? remove.error ?? loadMore.error)?.message}
+            {
+              (
+                media.error ??
+                remove.error ??
+                loadMore.error ??
+                loadMoreGroups.error
+              )?.message
+            }
           </p>
         )}
         {!media.isLoading && items.length === 0 && (
@@ -223,7 +308,7 @@ export function Gallery() {
               loadMore.isPending && loadMore.variables?.groupKey === group.key;
             return (
               <section className="media-group" key={group.key}>
-                {groupMode !== 'none' && (
+                {effectiveGroupMode !== 'none' && (
                   <div className="group-heading">
                     <h3>{group.label}</h3>
                     <span>{group.items.length}</span>
@@ -258,6 +343,16 @@ export function Gallery() {
             );
           })}
         </div>
+        {nextGroupOffset !== null && (
+          <button
+            className="load-more-button"
+            disabled={loadMoreGroups.isPending}
+            onClick={loadGroups}
+            type="button"
+          >
+            {loadMoreGroups.isPending ? 'Loading…' : 'Load more groups'}
+          </button>
+        )}
       </section>
       {previewItemId && (
         <MediaPreview

@@ -190,6 +190,7 @@ export interface MediaItemGroup {
 
 export interface MediaItemGroups {
   groups: MediaItemGroup[];
+  nextGroupOffset: number | null;
 }
 
 export const credentialInputSchema = z.object({
