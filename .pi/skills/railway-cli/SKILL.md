@@ -53,7 +53,7 @@ If the user asks to deploy the current directory, `railway up` may be run direct
 2. Resolve the exact project, environment, and service before every mutation.
 3. When several services could match, inspect with `railway service list --json`; do not guess.
 4. State the intended scope before changing production resources or configuration.
-5. Require explicit user confirmation before destructive actions such as deleting services, deployments, databases, buckets, volumes, domains, or variables.
+5. Require explicit user confirmation immediately before destructive actions (such as deleting services, deployments, databases, buckets, volumes, domains, or variables) or provisioning billable resources.
 6. Do not use `--yes` to bypass destructive confirmations unless the user explicitly authorized that exact action.
 7. After every mutation, perform a scoped read-back to verify it.
 8. Never claim deployment success until its terminal status is `SUCCESS`. A detached upload only proves the build was queued.
@@ -72,7 +72,6 @@ railway metrics --service <service> --since 1h --json
 railway logs --service <service> --lines 200 --json
 railway logs --service <service> --build --latest --lines 200 --json
 railway logs --service <service> --http --since 1h --json
-railway variable list --service <service> --json
 railway domain list --service <service> --json
 ```
 
@@ -84,40 +83,40 @@ Deploy source from the current repository with `railway up`, not `railway deploy
 
 ```bash
 railway up --service <service> --environment <environment>
-railway up --detach --service <service> --environment <environment>
+railway up --detach --json --service <service> --environment <environment>
 ```
 
-For a detached deployment, poll the newest scoped deployment:
+For a detached deployment, capture `deploymentId` from the `railway up --detach --json` response. Poll `railway deployment list --service <service> --environment <environment> --json` and select the entry whose `id` exactly matches that captured ID; never infer the deployment from list order. The CLI currently has no get-by-ID deployment command.
 
-```bash
-railway deployment list --service <service> --environment <environment> --json
-```
-
-Report `SUCCESS` as deployed. For `FAILED` or `CRASHED`, inspect build and runtime logs. Report any other state exactly rather than treating it as success.
+Report `SUCCESS` as deployed. For `FAILED` or `CRASHED`, inspect build and runtime logs for that deployment ID. Report any other state exactly rather than treating it as success.
 
 ## Variables and local commands
 
 ```bash
-railway variable list --service <service> --environment <environment> --json
 railway variable set KEY=value --service <service> --environment <environment>
 printf %s "$SECRET_VALUE" | railway variable set SECRET_KEY --stdin --service <service> --environment <environment>
 railway variable delete KEY --service <service> --environment <environment>
 railway run --service <service> --environment <environment> -- <command>
 ```
 
-Variable mutations can stage or trigger deployments. Verify the resulting variable/deployment state. Avoid placing sensitive values directly in command text when stdin is supported because shell history and tool logs may retain arguments.
+`railway variable list`, `--kv`, and `--json` all expose raw values. Do not run them in agent-visible output merely to discover variable names. Variable mutations can stage or trigger deployments; verify the resulting deployment state without dumping variables. Avoid placing sensitive values directly in command text when stdin is supported because shell history and tool logs may retain arguments.
 
 ## Services and infrastructure
+
+Always inspect existing services before provisioning to avoid duplicates. Creating a service or database starts a billable resource immediately. State the exact project, environment, resource type, and name, then obtain explicit user confirmation immediately before running either provisioning command:
 
 ```bash
 railway add --service <name> --json
 railway add --database postgres --json
 railway add --database redis --json
+```
+
+Read-only service operations do not need that provisioning confirmation:
+
+```bash
 railway domain list --service <service> --json
 railway logs --service <service> --network --lines 200 --json
 ```
-
-Always inspect existing services before provisioning to avoid duplicates.
 
 ## Resource-aware application changes
 
