@@ -92,7 +92,7 @@ Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Vid
 
 `MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). Retention is serialized independently from collection processing, so collections can run concurrently without overlapping quota decisions.
 
-Collection concurrency is automatically sized when the worker starts. It budgets two CPU threads and 1.5 GiB per collection, reserves 1.5 GiB for the co-located API and worker overhead, and caps automatic concurrency at four. The current Railway backend allocation of 8 vCPU and 8 GiB therefore processes up to four collections concurrently. Set `COLLECTION_CONCURRENCY` to a value from 1 through 8 only when an explicit override is needed. Metadata probing within each collection remains bounded by `METADATA_CONCURRENCY`.
+Collection concurrency is automatically sized when the worker starts. It budgets two CPU threads and 1.5 GiB per collection, reserves 1.5 GiB for the co-located API and worker overhead, and caps automatic concurrency at four. The worker logs the detected limits and selected concurrency at startup; the current Railway runtime exposes 8 CPUs and 7.5 GiB to Node, which selects three concurrent collections. Set `COLLECTION_CONCURRENCY` to a value from 1 through 8 only when an explicit override is needed. Metadata probing within each collection remains bounded by `METADATA_CONCURRENCY`.
 
 ## S3-compatible media storage
 
