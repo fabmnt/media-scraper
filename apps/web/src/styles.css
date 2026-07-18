@@ -389,8 +389,19 @@ footer {
 }
 .automatic-profile-form {
   display: grid;
-  grid-template-columns: 150px minmax(180px, 1fr) 190px auto;
+  grid-template-columns: 150px minmax(180px, 1fr) 190px auto auto;
   gap: 8px;
+}
+.automatic-story-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 14px;
+}
+.automatic-story-toggle input {
+  width: auto;
 }
 .automatic-interval-note {
   display: block;
@@ -403,7 +414,7 @@ footer {
 }
 .automatic-profile {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 190px auto;
+  grid-template-columns: minmax(220px, 1fr) 190px auto auto;
   gap: 20px;
   align-items: center;
   padding: 16px 0;
@@ -1139,7 +1150,10 @@ button:disabled {
   .profile-collector form {
     grid-template-columns: 1fr 1fr;
   }
-  .automatic-profile-form input,
+  .automatic-profile {
+    grid-template-columns: 1fr;
+  }
+  .automatic-profile-form > input,
   .profile-collector form input {
     grid-column: 1 / -1;
   }

@@ -1,0 +1,1 @@
+ALTER TABLE "automatic_profiles" ADD COLUMN "include_stories" boolean DEFAULT false NOT NULL;

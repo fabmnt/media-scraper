@@ -66,6 +66,10 @@ export const mediaSortSchema = z.enum(MEDIA_SORT_OPTIONS);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
+export const STORY_SUPPORTED_PLATFORMS: readonly Platform[] = [
+  'instagram',
+  'tiktok',
+];
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type CollectionOrigin = z.infer<typeof collectionOriginSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
@@ -185,20 +189,34 @@ export type ProfileLookup = z.output<typeof profileLookupSchema>;
 export type ProfileMedia = z.infer<typeof profileMediaSchema>;
 export type ProfileMediaResults = z.infer<typeof profileMediaResultsSchema>;
 
-export const createAutomaticProfileSchema = z.object({
-  platform: platformSchema,
-  username: profileUsernameSchema,
-  intervalMinutes: automaticCollectionIntervalSchema,
-});
+export const createAutomaticProfileSchema = z
+  .object({
+    platform: platformSchema,
+    username: profileUsernameSchema,
+    intervalMinutes: automaticCollectionIntervalSchema,
+    includeStories: z.boolean().default(false),
+  })
+  .refine(
+    (input) =>
+      !input.includeStories ||
+      STORY_SUPPORTED_PLATFORMS.includes(input.platform),
+    {
+      message: 'Stories are only supported for Instagram and TikTok profiles',
+      path: ['includeStories'],
+    },
+  );
 
 export const updateAutomaticProfileSchema = z
   .object({
     enabled: z.boolean().optional(),
     intervalMinutes: automaticCollectionIntervalSchema.optional(),
+    includeStories: z.boolean().optional(),
   })
   .refine(
     (input) =>
-      input.enabled !== undefined || input.intervalMinutes !== undefined,
+      input.enabled !== undefined ||
+      input.intervalMinutes !== undefined ||
+      input.includeStories !== undefined,
     'At least one automatic profile setting is required',
   );
 
@@ -207,6 +225,7 @@ export const automaticProfileSchema = z.object({
   platform: platformSchema,
   username: z.string(),
   intervalMinutes: automaticCollectionIntervalSchema,
+  includeStories: z.boolean(),
   enabled: z.boolean(),
   lastCheckedAt: z.iso.datetime().nullable(),
   lastSuccessAt: z.iso.datetime().nullable(),

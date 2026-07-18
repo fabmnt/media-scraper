@@ -45,6 +45,7 @@ export const automaticProfiles = pgTable(
     platform: platformEnum('platform').notNull(),
     username: text('username').notNull(),
     intervalMinutes: integer('interval_minutes').notNull(),
+    includeStories: boolean('include_stories').notNull().default(false),
     enabled: boolean('enabled').notNull().default(true),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),

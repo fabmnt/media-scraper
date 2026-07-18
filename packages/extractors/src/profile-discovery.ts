@@ -31,6 +31,7 @@ const INSTAGRAM_PROFILE_ID_PATTERNS = [
 const GALLERY_DIRECTORY_MESSAGE = 2;
 const GALLERY_URL_MESSAGE = 3;
 const GALLERY_ERROR_MESSAGE = -1;
+const INSTAGRAM_STORIES_SPLIT_OPTION = 'extractor.instagram.stories.split=true';
 
 const optionalString = z.string().optional().catch(undefined);
 const optionalIdentifier = z
@@ -62,6 +63,7 @@ const galleryMetadataSchema = z.looseObject({
     .looseObject({ images: z.array(imageSchema).catch([]) })
     .optional()
     .catch(undefined),
+  media_id: optionalIdentifier,
   post_date: optionalString,
   post_id: optionalIdentifier,
   post_shortcode: optionalIdentifier,
@@ -166,15 +168,30 @@ async function instagramProfileId(username: string, signal?: AbortSignal) {
   throw new Error('Instagram profile ID was not found');
 }
 
+type ProfileSourceKind = 'posts' | 'reels' | 'stories';
+
 interface ProfileSource {
+  kind: ProfileSourceKind;
+  options?: string[];
   url: string;
   include: (metadata: GalleryMetadata) => boolean;
+}
+
+interface ProfileDiscoveryOptions {
+  includeStories?: boolean;
+}
+
+function profileSourceCount(platform: Platform, includeStories: boolean) {
+  const baseSourceCount = platform === 'instagram' ? 2 : 1;
+  const supportsStories = platform === 'instagram' || platform === 'tiktok';
+  return baseSourceCount + Number(includeStories && supportsStories);
 }
 
 async function profileSources(
   platform: Platform,
   username: string,
   profileIdentifier: string | undefined,
+  includeStories: boolean,
   signal?: AbortSignal,
 ): Promise<{
   profileIdentifier: string | undefined;
@@ -194,15 +211,27 @@ async function profileSources(
           : undefined,
         sources: [
           {
+            kind: 'posts',
             url: `https://www.instagram.com/${identifier}/posts/`,
             include: (metadata) =>
               metadata.type !== 'reel' &&
               !metadata.post_url?.includes('/reel/'),
           },
           {
+            kind: 'reels',
             url: `https://www.instagram.com/${identifier}/reels/`,
             include: () => true,
           },
+          ...(includeStories
+            ? [
+                {
+                  kind: 'stories' as const,
+                  options: [INSTAGRAM_STORIES_SPLIT_OPTION],
+                  url: `https://www.instagram.com/stories/${identifier}/`,
+                  include: () => true,
+                },
+              ]
+            : []),
         ],
       };
     }
@@ -211,6 +240,7 @@ async function profileSources(
         profileIdentifier: undefined,
         sources: [
           {
+            kind: 'posts',
             url: `https://www.facebook.com/${encodedUsername}/photos`,
             include: () => true,
           },
@@ -221,9 +251,19 @@ async function profileSources(
         profileIdentifier: undefined,
         sources: [
           {
+            kind: 'posts',
             url: `https://www.tiktok.com/@${encodedUsername}/posts`,
             include: () => true,
           },
+          ...(includeStories
+            ? [
+                {
+                  kind: 'stories' as const,
+                  url: `https://www.tiktok.com/@${encodedUsername}/stories`,
+                  include: () => true,
+                },
+              ]
+            : []),
         ],
       };
   }
@@ -244,10 +284,21 @@ function publishedDate(metadata: GalleryMetadata) {
 function sourceDetails(
   platform: Platform,
   username: string,
+  source: ProfileSource,
   metadata: GalleryMetadata,
 ) {
   switch (platform) {
     case 'instagram': {
+      if (source.kind === 'stories') {
+        const id = metadata.media_id;
+        return id
+          ? {
+              id,
+              sourceUrl: `https://www.instagram.com/stories/${encodeURIComponent(metadata.username ?? username)}/${id}/`,
+            }
+          : undefined;
+      }
+
       const id =
         metadata.post_shortcode ??
         metadata.shortcode ??
@@ -305,7 +356,9 @@ function mediaType(platform: Platform, metadata: GalleryMetadata) {
       ? ('image' as const)
       : ('video' as const);
   }
-  return metadata.type === 'video' || metadata.type === 'reel'
+  return metadata.type === 'video' ||
+    metadata.type === 'reel' ||
+    metadata.video_url
     ? ('video' as const)
     : ('image' as const);
 }
@@ -319,7 +372,7 @@ function assetCount(platform: Platform, metadata: GalleryMetadata) {
 
 async function extractProfileSource(
   platform: Platform,
-  url: string,
+  source: ProfileSource,
   offset: number,
   pageSize: number,
   authenticationArguments: string[],
@@ -354,8 +407,9 @@ async function extractProfileSource(
         `max-posts=${String(maxPosts)}`,
         '--option',
         `tiktok-range=${String(rangeStart)}-${String(rangeEnd)}`,
+        ...(source.options?.flatMap((option) => ['--option', option]) ?? []),
         ...authenticationArguments,
-        url,
+        source.url,
       ],
       {
         encoding: 'utf8',
@@ -383,6 +437,32 @@ async function extractProfileSource(
   }
 }
 
+function profileMedia(
+  platform: Platform,
+  username: string,
+  source: ProfileSource,
+  metadata: GalleryMetadata,
+) {
+  const details = sourceDetails(platform, username, source, metadata);
+  if (!details || !source.include(metadata)) return undefined;
+
+  const candidate = profileMediaSchema.safeParse({
+    ...details,
+    platform,
+    thumbnailUrl: thumbnailUrl(platform, metadata),
+    caption:
+      metadata.description ??
+      metadata.desc ??
+      metadata.caption ??
+      metadata.title ??
+      null,
+    publishedAt: publishedDate(metadata),
+    type: mediaType(platform, metadata),
+    assetCount: assetCount(platform, metadata),
+  });
+  return candidate.success ? candidate.data : undefined;
+}
+
 function normalizeSourcePage(
   messages: z.infer<typeof galleryOutputSchema>,
   source: ProfileSource,
@@ -391,6 +471,7 @@ function normalizeSourcePage(
 ) {
   const entries: Array<ProfileMedia | undefined> = [];
   const mediaByUrl = new Map<string, ProfileMedia>();
+  let currentEntryIndex: number | undefined;
   let currentMedia: ProfileMedia | undefined;
 
   for (const message of messages) {
@@ -398,40 +479,35 @@ function normalizeSourcePage(
 
     if (message[0] === GALLERY_DIRECTORY_MESSAGE) {
       const metadata = message[1];
-      const entryIndex = entries.push(undefined) - 1;
-      const details = sourceDetails(platform, username, metadata);
-      if (!details || !source.include(metadata)) {
+      currentEntryIndex = entries.push(undefined) - 1;
+      const candidate = profileMedia(platform, username, source, metadata);
+      if (!candidate) {
         currentMedia = undefined;
         continue;
       }
 
-      const candidate = profileMediaSchema.safeParse({
-        ...details,
-        platform,
-        thumbnailUrl: thumbnailUrl(platform, metadata),
-        caption:
-          metadata.description ??
-          metadata.desc ??
-          metadata.caption ??
-          metadata.title ??
-          null,
-        publishedAt: publishedDate(metadata),
-        type: mediaType(platform, metadata),
-        assetCount: assetCount(platform, metadata),
-      });
-      if (!candidate.success) {
-        currentMedia = undefined;
-        continue;
-      }
-
-      currentMedia = mediaByUrl.get(candidate.data.sourceUrl) ?? candidate.data;
+      currentMedia = mediaByUrl.get(candidate.sourceUrl) ?? candidate;
       mediaByUrl.set(currentMedia.sourceUrl, currentMedia);
-      entries[entryIndex] = currentMedia;
+      entries[currentEntryIndex] = currentMedia;
       continue;
     }
 
-    if (!currentMedia) continue;
     const [, directUrl, metadata] = message;
+    if (
+      !currentMedia &&
+      source.kind === 'stories' &&
+      platform === 'instagram' &&
+      currentEntryIndex !== undefined
+    ) {
+      const candidate = profileMedia(platform, username, source, metadata);
+      if (candidate) {
+        currentMedia = mediaByUrl.get(candidate.sourceUrl) ?? candidate;
+        mediaByUrl.set(currentMedia.sourceUrl, currentMedia);
+        entries[currentEntryIndex] = currentMedia;
+      }
+    }
+    if (!currentMedia) continue;
+
     if (!currentMedia.thumbnailUrl) {
       const candidateThumbnail =
         thumbnailUrl(platform, metadata) ??
@@ -454,14 +530,16 @@ export async function discoverProfileMedia(
   cookiesPath?: string,
   signal?: AbortSignal,
   pageSize: number = MAX_PROFILE_MEDIA,
+  { includeStories = false }: ProfileDiscoveryOptions = {},
 ): Promise<ProfileMediaResults> {
-  const sourceCount = platform === 'instagram' ? 2 : 1;
+  const sourceCount = profileSourceCount(platform, includeStories);
   const cursorContext = { platform, username, sourceCount };
   const continuation = decodeProfileCursor(cursor, cursorContext);
   const profile = await profileSources(
     platform,
     username,
     continuation.profileIdentifier,
+    includeStories,
     signal,
   );
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
@@ -470,7 +548,7 @@ export async function discoverProfileMedia(
       try {
         const messages = await extractProfileSource(
           platform,
-          source.url,
+          source,
           continuation.sources[index]?.offset ?? 0,
           pageSize,
           authenticationArguments,

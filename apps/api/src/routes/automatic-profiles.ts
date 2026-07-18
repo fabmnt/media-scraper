@@ -4,6 +4,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   createAutomaticProfileSchema,
+  STORY_SUPPORTED_PLATFORMS,
   updateAutomaticProfileSchema,
   type AutomaticProfileJobPayload,
 } from '@media-scraper/shared';
@@ -28,6 +29,10 @@ class AutomaticProfileConflictError extends Error {
 
 class AutomaticProfileQueueError extends Error {
   readonly statusCode = 503;
+}
+
+class AutomaticProfileStoriesUnsupportedError extends Error {
+  readonly statusCode = 400;
 }
 
 function isUniqueViolation(error: unknown) {
@@ -92,22 +97,38 @@ export async function automaticProfileRoutes(
   app.patch('/:id', async (request) => {
     const { id } = automaticProfileParamsSchema.parse(request.params);
     const input = updateAutomaticProfileSchema.parse(request.body);
+    const [existingProfile] = await db
+      .select({ platform: automaticProfiles.platform })
+      .from(automaticProfiles)
+      .where(eq(automaticProfiles.id, id));
+    if (!existingProfile) {
+      const error = new Error('Automatic profile not found');
+      Object.assign(error, { statusCode: 404 });
+      throw error;
+    }
+    if (
+      input.includeStories &&
+      !STORY_SUPPORTED_PLATFORMS.includes(existingProfile.platform)
+    ) {
+      throw new AutomaticProfileStoriesUnsupportedError(
+        'Stories are only supported for Instagram and TikTok profiles',
+      );
+    }
+
     const [profile] = await db
       .update(automaticProfiles)
       .set({
         ...input,
-        ...(input.enabled === true || input.intervalMinutes !== undefined
+        ...(input.enabled === true ||
+        input.intervalMinutes !== undefined ||
+        input.includeStories !== undefined
           ? { lastError: null, retryAt: null }
           : {}),
         updatedAt: new Date(),
       })
       .where(eq(automaticProfiles.id, id))
       .returning();
-    if (!profile) {
-      const error = new Error('Automatic profile not found');
-      Object.assign(error, { statusCode: 404 });
-      throw error;
-    }
+    if (!profile) throw new Error('Automatic profile was not updated');
 
     try {
       const nextCheckAt = profile.enabled

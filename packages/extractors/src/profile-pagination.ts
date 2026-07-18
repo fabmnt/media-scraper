@@ -21,7 +21,7 @@ const profileCursorSchema = z.object({
     .string()
     .regex(/^id:\d+$/)
     .optional(),
-  sources: z.array(profileSourceCursorSchema).min(1).max(2),
+  sources: z.array(profileSourceCursorSchema).min(1).max(3),
 });
 
 export type ProfileSourceCursor = z.infer<typeof profileSourceCursorSchema>;

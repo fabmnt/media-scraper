@@ -102,6 +102,7 @@ export async function processAutomaticProfile(
       cookiesPath,
       signal,
       MAX_PROFILE_MEDIA,
+      { includeStories: profile.includeStories },
     );
     signal.throwIfAborted();
 
