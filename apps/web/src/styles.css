@@ -1150,6 +1150,9 @@ button:disabled {
   .profile-collector form {
     grid-template-columns: 1fr 1fr;
   }
+  .automatic-profile {
+    grid-template-columns: 1fr;
+  }
   .automatic-profile-form > input,
   .profile-collector form input {
     grid-column: 1 / -1;

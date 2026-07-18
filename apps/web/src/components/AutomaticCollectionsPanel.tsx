@@ -4,6 +4,7 @@ import {
   AUTOMATIC_COLLECTION_INTERVAL_OPTIONS,
   MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
+  STORY_SUPPORTED_PLATFORMS,
   SUPPORTED_PLATFORMS,
   type Platform,
   type UpdateAutomaticProfileInput,
@@ -69,7 +70,7 @@ export function AutomaticCollectionsPanel() {
     onSuccess: () => setMessage('Profile check queued.'),
   });
 
-  const supportsStories = platform === 'instagram' || platform === 'tiktok';
+  const supportsStories = STORY_SUPPORTED_PLATFORMS.includes(platform);
 
   function submitProfile(event: FormEvent) {
     event.preventDefault();
@@ -111,7 +112,9 @@ export function AutomaticCollectionsPanel() {
           onChange={(event) => {
             const nextPlatform = event.target.value as Platform;
             setPlatform(nextPlatform);
-            if (nextPlatform === 'facebook') setIncludeStories(false);
+            if (!STORY_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
+              setIncludeStories(false);
+            }
           }}
           value={platform}
         >
@@ -215,8 +218,7 @@ export function AutomaticCollectionsPanel() {
                   </option>
                 ))}
               </select>
-              {(profile.platform === 'instagram' ||
-                profile.platform === 'tiktok') && (
+              {STORY_SUPPORTED_PLATFORMS.includes(profile.platform) && (
                 <label className="automatic-story-toggle">
                   <input
                     aria-label={`Include stories for ${profile.username}`}

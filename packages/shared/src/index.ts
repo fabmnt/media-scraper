@@ -66,6 +66,10 @@ export const mediaSortSchema = z.enum(MEDIA_SORT_OPTIONS);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
+export const STORY_SUPPORTED_PLATFORMS: readonly Platform[] = [
+  'instagram',
+  'tiktok',
+];
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type CollectionOrigin = z.infer<typeof collectionOriginSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
@@ -185,12 +189,22 @@ export type ProfileLookup = z.output<typeof profileLookupSchema>;
 export type ProfileMedia = z.infer<typeof profileMediaSchema>;
 export type ProfileMediaResults = z.infer<typeof profileMediaResultsSchema>;
 
-export const createAutomaticProfileSchema = z.object({
-  platform: platformSchema,
-  username: profileUsernameSchema,
-  intervalMinutes: automaticCollectionIntervalSchema,
-  includeStories: z.boolean().default(false),
-});
+export const createAutomaticProfileSchema = z
+  .object({
+    platform: platformSchema,
+    username: profileUsernameSchema,
+    intervalMinutes: automaticCollectionIntervalSchema,
+    includeStories: z.boolean().default(false),
+  })
+  .refine(
+    (input) =>
+      !input.includeStories ||
+      STORY_SUPPORTED_PLATFORMS.includes(input.platform),
+    {
+      message: 'Stories are only supported for Instagram and TikTok profiles',
+      path: ['includeStories'],
+    },
+  );
 
 export const updateAutomaticProfileSchema = z
   .object({
