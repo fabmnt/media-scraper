@@ -72,11 +72,7 @@ export async function automaticProfileRoutes(
     }
 
     try {
-      const nextCheckAt = await upsertAutomaticProfileScheduler(
-        queue,
-        profile,
-        true,
-      );
+      const nextCheckAt = await upsertAutomaticProfileScheduler(queue, profile);
       const [scheduledProfile] = await db
         .update(automaticProfiles)
         .set({ nextCheckAt, updatedAt: new Date() })
