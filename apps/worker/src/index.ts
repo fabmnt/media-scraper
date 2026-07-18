@@ -1,3 +1,4 @@
+import { availableParallelism, totalmem } from 'node:os';
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { loadWorkerConfig, mediaStorageOptions } from '@media-scraper/config';
@@ -10,9 +11,38 @@ import { MediaStorage } from '@media-scraper/storage';
 import { processCollection } from './process-collection.js';
 import { processMediaMaintenance } from './storage-retention.js';
 
+const AUTO_COLLECTION_CONCURRENCY_LIMIT = 4;
+const BYTES_PER_GIBIBYTE = 1024 ** 3;
+const CPU_THREADS_PER_COLLECTION = 2;
 const MAINTENANCE_INTERVAL_MS = 30_000;
+const MEMORY_PER_COLLECTION_BYTES = 1.5 * BYTES_PER_GIBIBYTE;
+const RESERVED_MEMORY_BYTES = 1.5 * BYTES_PER_GIBIBYTE;
 
 const config = loadWorkerConfig();
+const cpuCount = availableParallelism();
+const constrainedMemoryBytes = process.constrainedMemory();
+const memoryLimitBytes =
+  constrainedMemoryBytes > 0 && constrainedMemoryBytes <= totalmem()
+    ? constrainedMemoryBytes
+    : totalmem();
+const automaticCollectionConcurrency = Math.max(
+  1,
+  Math.min(
+    AUTO_COLLECTION_CONCURRENCY_LIMIT,
+    Math.floor(cpuCount / CPU_THREADS_PER_COLLECTION),
+    Math.floor(
+      (memoryLimitBytes - RESERVED_MEMORY_BYTES) / MEMORY_PER_COLLECTION_BYTES,
+    ),
+  ),
+);
+const collectionConcurrency =
+  config.COLLECTION_CONCURRENCY ?? automaticCollectionConcurrency;
+const concurrencySource = config.COLLECTION_CONCURRENCY
+  ? 'configured override'
+  : `${String(cpuCount)} CPUs and ${(memoryLimitBytes / BYTES_PER_GIBIBYTE).toFixed(1)} GiB memory`;
+console.info(
+  `Collection worker concurrency set to ${String(collectionConcurrency)} (${concurrencySource})`,
+);
 const database = createDatabase(config.DATABASE_URL);
 const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
 const shutdownController = new AbortController();
@@ -34,7 +64,7 @@ const worker = new Worker<CollectionJobPayload>(
       storage,
       videoMaxDimension: config.VIDEO_MAX_DIMENSION,
     }),
-  { connection: redis, concurrency: 1 },
+  { connection: redis, concurrency: collectionConcurrency },
 );
 
 let maintenancePromise: Promise<void> | undefined;

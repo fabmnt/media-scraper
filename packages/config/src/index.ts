@@ -7,6 +7,7 @@ const WORKSPACE_MARKER = 'pnpm-workspace.yaml';
 const DEFAULT_MAX_ASSET_BYTES = 100 * 1024 * 1024;
 const DEFAULT_MAX_COLLECTION_BYTES = 500 * 1024 * 1024;
 const DEFAULT_MAX_MEDIA_STORAGE_BYTES = 4 * 1024 * 1024 * 1024;
+const MAX_COLLECTION_CONCURRENCY = 8;
 const DEFAULT_OPTIMIZATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_PRESIGNED_URL_TTL_SECONDS = 15 * 60;
 const DEFAULT_PROFILE_DISCOVERY_CACHE_TTL_SECONDS = 10 * 60;
@@ -33,6 +34,10 @@ if (existsSync(environmentPath)) process.loadEnvFile(environmentPath);
 
 const positiveInteger = z.coerce.number().int().positive();
 const percentage = z.coerce.number().int().min(1).max(100);
+const optionalPositiveInteger = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  positiveInteger.optional(),
+);
 const optionalEnvironmentString = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().min(1).optional(),
@@ -103,6 +108,10 @@ const apiEnvironmentSchema = commonEnvironmentSchema
 
 const workerEnvironmentSchema = commonEnvironmentSchema
   .extend({
+    COLLECTION_CONCURRENCY: optionalPositiveInteger.refine(
+      (value) => value === undefined || value <= MAX_COLLECTION_CONCURRENCY,
+      `Collection concurrency cannot exceed ${String(MAX_COLLECTION_CONCURRENCY)}`,
+    ),
     EXTRACTION_TIMEOUT_MS: positiveInteger.default(1_800_000),
     IMAGE_MAX_DIMENSION: positiveInteger.default(DEFAULT_IMAGE_MAX_DIMENSION),
     MAX_ASSET_BYTES: positiveInteger.default(DEFAULT_MAX_ASSET_BYTES),

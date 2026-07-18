@@ -42,6 +42,8 @@ COOKIE_SECURE=true
 WEB_ORIGIN=http://localhost:5173
 MEDIA_ROOT=/data/media
 CREDENTIALS_ROOT=/data/credentials
+# Optional: override resource-aware collection concurrency (1-8).
+# COLLECTION_CONCURRENCY=4
 MAX_ASSET_BYTES=104857600
 MAX_COLLECTION_BYTES=524288000
 MAX_MEDIA_STORAGE_BYTES=4294967296
@@ -88,7 +90,9 @@ Profile discovery uses `gallery-dl` in metadata-only mode and returns at most 24
 
 Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Still images are converted to WebP with a maximum 1920px dimension; animated GIF, WebP, APNG, and other multi-frame images are preserved unchanged. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
 
-`MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). The worker processes one collection at a time so quota decisions cannot race each other. Metadata probing uses `METADATA_CONCURRENCY` to avoid launching an unbounded number of processes.
+`MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). Retention is serialized independently from collection processing, so collections can run concurrently without overlapping quota decisions.
+
+Collection concurrency is automatically sized when the worker starts. It budgets two CPU threads and 1.5 GiB per collection, reserves 1.5 GiB for the co-located API and worker overhead, and caps automatic concurrency at four. The current Railway backend allocation of 8 vCPU and 8 GiB therefore processes up to four collections concurrently. Set `COLLECTION_CONCURRENCY` to a value from 1 through 8 only when an explicit override is needed. Metadata probing within each collection remains bounded by `METADATA_CONCURRENCY`.
 
 ## S3-compatible media storage
 
