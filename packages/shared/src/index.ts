@@ -18,6 +18,7 @@ export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
+export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
@@ -104,6 +105,7 @@ const profileUsernameSchema = z
 export const profileLookupSchema = z.object({
   platform: platformSchema,
   username: profileUsernameSchema,
+  cursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).optional(),
 });
 
 export const profileMediaSchema = z.object({
@@ -119,6 +121,7 @@ export const profileMediaSchema = z.object({
 
 export const profileMediaResultsSchema = z.object({
   items: z.array(profileMediaSchema).max(MAX_PROFILE_MEDIA),
+  nextCursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).nullable(),
 });
 
 export type ProfileLookupInput = z.input<typeof profileLookupSchema>;

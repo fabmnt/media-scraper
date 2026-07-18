@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import { discoverProfileMedia } from '@media-scraper/extractors';
+import {
+  discoverProfileMedia,
+  InvalidProfileCursorError,
+} from '@media-scraper/extractors';
 import { profileLookupSchema } from '@media-scraper/shared';
 import {
   hasPlatformCredential,
@@ -30,16 +33,17 @@ export async function profileRoutes(
       reply.raw.once('close', abortDiscovery);
 
       try {
-        return {
-          items: await discoverProfileMedia(
-            input,
-            hasCredential
-              ? platformCredentialPath(credentialsRoot, input.platform)
-              : undefined,
-            abortController.signal,
-          ),
-        };
+        return await discoverProfileMedia(
+          input,
+          hasCredential
+            ? platformCredentialPath(credentialsRoot, input.platform)
+            : undefined,
+          abortController.signal,
+        );
       } catch (error) {
+        if (error instanceof InvalidProfileCursorError) {
+          return reply.code(400).send({ message: error.message });
+        }
         request.log.warn(error, 'Profile discovery failed');
         return reply.code(502).send({
           message:
