@@ -25,7 +25,21 @@ COPY . .
 FROM application AS migrate
 CMD ["pnpm", "db:migrate"]
 
-FROM application AS api
+# Profile discovery runs gallery-dl in metadata-only mode from the API.
+FROM toolchain AS discovery-tools
+ENV DEBIAN_FRONTEND=noninteractive
+RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/cache/apt,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/lib/apt/lists,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-venv
+RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/root/.cache/pip,target=/root/.cache/pip \
+  python3 -m venv /opt/media-tools \
+  && /opt/media-tools/bin/pip install gallery-dl
+ENV PATH=/opt/media-tools/bin:$PATH
+
+FROM discovery-tools AS api
+COPY --from=dependencies /app /app
+COPY . .
 RUN pnpm --filter @media-scraper/api build
 CMD ["pnpm", "--filter", "@media-scraper/api", "start"]
 
@@ -35,18 +49,15 @@ ENV API_PROXY_URL=$API_PROXY_URL
 RUN pnpm --filter @media-scraper/web build
 CMD ["pnpm", "--filter", "@media-scraper/web", "preview", "--host", "0.0.0.0"]
 
-# Keep heavyweight media tooling independent from dependencies and source code.
+# Keep heavyweight download tooling independent from dependencies and source code.
 # It is rebuilt only when this stage or the Node base image changes.
-FROM toolchain AS worker-tools
-ENV DEBIAN_FRONTEND=noninteractive
+FROM discovery-tools AS worker-tools
 RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/cache/apt,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/lib/apt/lists,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg python3 python3-venv
+  && apt-get install -y --no-install-recommends ffmpeg
 RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/root/.cache/pip,target=/root/.cache/pip \
-  python3 -m venv /opt/media-tools \
-  && /opt/media-tools/bin/pip install gallery-dl yt-dlp
-ENV PATH=/opt/media-tools/bin:$PATH
+  /opt/media-tools/bin/pip install yt-dlp
 
 FROM worker-tools AS worker
 COPY --from=dependencies /app /app

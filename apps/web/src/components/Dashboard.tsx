@@ -5,6 +5,7 @@ import { api } from '../api';
 import { CollectionForm } from './CollectionForm';
 import { Gallery } from './Gallery';
 import { PlatformCredentials } from './PlatformCredentials';
+import { ProfileCollectionForm } from './ProfileCollectionForm';
 import { JobsPanel } from './JobsPanel';
 
 const DASHBOARD_TABS = [
@@ -127,6 +128,7 @@ export function Dashboard() {
             ))}
           {activeTab === 'get-media' && (
             <div className="get-media">
+              <ProfileCollectionForm />
               <CollectionForm />
               <JobsPanel />
             </div>

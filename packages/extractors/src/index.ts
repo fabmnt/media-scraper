@@ -1,3 +1,5 @@
+export { discoverProfileMedia } from './profile-discovery.js';
+
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
