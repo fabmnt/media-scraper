@@ -96,7 +96,9 @@ export async function automaticProfileRoutes(
       .update(automaticProfiles)
       .set({
         ...input,
-        ...(input.enabled === true || input.intervalMinutes !== undefined
+        ...(input.enabled === true ||
+        input.intervalMinutes !== undefined ||
+        input.includeStories !== undefined
           ? { lastError: null, retryAt: null }
           : {}),
         updatedAt: new Date(),

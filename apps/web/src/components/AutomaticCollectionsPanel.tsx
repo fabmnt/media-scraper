@@ -17,6 +17,7 @@ export function AutomaticCollectionsPanel() {
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [username, setUsername] = useState('');
   const [intervalMinutes, setIntervalMinutes] = useState(60);
+  const [includeStories, setIncludeStories] = useState(false);
   const [message, setMessage] = useState('');
   const queryClient = useQueryClient();
   const profiles = useQuery({
@@ -28,6 +29,7 @@ export function AutomaticCollectionsPanel() {
     mutationFn: api.createAutomaticProfile,
     onMutate: () => setMessage(''),
     onSuccess: () => {
+      setIncludeStories(false);
       setUsername('');
       setMessage('Automatic collection enabled. The first check was queued.');
     },
@@ -67,9 +69,16 @@ export function AutomaticCollectionsPanel() {
     onSuccess: () => setMessage('Profile check queued.'),
   });
 
+  const supportsStories = platform === 'instagram' || platform === 'tiktok';
+
   function submitProfile(event: FormEvent) {
     event.preventDefault();
-    createProfile.mutate({ platform, username, intervalMinutes });
+    createProfile.mutate({
+      platform,
+      username,
+      intervalMinutes,
+      includeStories: supportsStories && includeStories,
+    });
   }
 
   const mutationError =
@@ -99,7 +108,11 @@ export function AutomaticCollectionsPanel() {
       <form className="automatic-profile-form" onSubmit={submitProfile}>
         <select
           aria-label="Automatic collection platform"
-          onChange={(event) => setPlatform(event.target.value as Platform)}
+          onChange={(event) => {
+            const nextPlatform = event.target.value as Platform;
+            setPlatform(nextPlatform);
+            if (nextPlatform === 'facebook') setIncludeStories(false);
+          }}
           value={platform}
         >
           {SUPPORTED_PLATFORMS.map((item) => (
@@ -128,6 +141,16 @@ export function AutomaticCollectionsPanel() {
             </option>
           ))}
         </select>
+        {supportsStories && (
+          <label className="automatic-story-toggle">
+            <input
+              checked={includeStories}
+              onChange={(event) => setIncludeStories(event.target.checked)}
+              type="checkbox"
+            />
+            Include stories
+          </label>
+        )}
         <button disabled={createProfile.isPending} type="submit">
           {createProfile.isPending
             ? 'Enabling…'
@@ -192,6 +215,24 @@ export function AutomaticCollectionsPanel() {
                   </option>
                 ))}
               </select>
+              {(profile.platform === 'instagram' ||
+                profile.platform === 'tiktok') && (
+                <label className="automatic-story-toggle">
+                  <input
+                    aria-label={`Include stories for ${profile.username}`}
+                    checked={profile.includeStories}
+                    disabled={isMutating}
+                    onChange={(event) =>
+                      updateProfile.mutate({
+                        id: profile.id,
+                        input: { includeStories: event.target.checked },
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Stories
+                </label>
+              )}
               <div className="automatic-profile-actions">
                 <button
                   disabled={isMutating || !profile.enabled}

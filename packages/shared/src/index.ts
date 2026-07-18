@@ -189,16 +189,20 @@ export const createAutomaticProfileSchema = z.object({
   platform: platformSchema,
   username: profileUsernameSchema,
   intervalMinutes: automaticCollectionIntervalSchema,
+  includeStories: z.boolean().default(false),
 });
 
 export const updateAutomaticProfileSchema = z
   .object({
     enabled: z.boolean().optional(),
     intervalMinutes: automaticCollectionIntervalSchema.optional(),
+    includeStories: z.boolean().optional(),
   })
   .refine(
     (input) =>
-      input.enabled !== undefined || input.intervalMinutes !== undefined,
+      input.enabled !== undefined ||
+      input.intervalMinutes !== undefined ||
+      input.includeStories !== undefined,
     'At least one automatic profile setting is required',
   );
 
@@ -207,6 +211,7 @@ export const automaticProfileSchema = z.object({
   platform: platformSchema,
   username: z.string(),
   intervalMinutes: automaticCollectionIntervalSchema,
+  includeStories: z.boolean(),
   enabled: z.boolean(),
   lastCheckedAt: z.iso.datetime().nullable(),
   lastSuccessAt: z.iso.datetime().nullable(),

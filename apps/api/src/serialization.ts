@@ -34,6 +34,7 @@ export function serializeAutomaticProfile(
     platform: row.platform,
     username: row.username,
     intervalMinutes: row.intervalMinutes,
+    includeStories: row.includeStories,
     enabled: row.enabled,
     lastCheckedAt: row.lastCheckedAt?.toISOString() ?? null,
     lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
