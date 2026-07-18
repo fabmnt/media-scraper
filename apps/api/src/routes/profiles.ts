@@ -6,7 +6,10 @@ import {
 } from '@media-scraper/extractors';
 import { MAX_PROFILE_MEDIA, profileLookupSchema } from '@media-scraper/shared';
 import { platformCredentialFile } from '../platform-cookies.js';
-import { ProfileDiscoveryCache } from '../profile-discovery-cache.js';
+import {
+  ProfileDiscoveryCache,
+  ProfileDiscoveryTimeoutError,
+} from '../profile-discovery-cache.js';
 import {
   ProfileDiscoveryBusyError,
   ProfileDiscoveryLimiter,
@@ -15,10 +18,6 @@ import {
 const MAX_ACTIVE_PROFILE_DISCOVERIES = 1;
 const MAX_QUEUED_PROFILE_DISCOVERIES = 1;
 const PROFILE_DISCOVERY_RETRY_AFTER_SECONDS = 5;
-
-class ProfileDiscoveryTimeoutError extends Error {
-  override readonly name = 'ProfileDiscoveryTimeoutError';
-}
 
 interface ProfileRoutesOptions {
   cacheTtlSeconds: number;
@@ -31,7 +30,7 @@ export async function profileRoutes(
   app: FastifyInstance,
   { cacheTtlSeconds, credentialsRoot, redis, timeoutMs }: ProfileRoutesOptions,
 ) {
-  const cache = new ProfileDiscoveryCache(redis, cacheTtlSeconds);
+  const cache = new ProfileDiscoveryCache(redis, cacheTtlSeconds, timeoutMs);
   const limiter = new ProfileDiscoveryLimiter(
     MAX_ACTIVE_PROFILE_DISCOVERIES,
     MAX_QUEUED_PROFILE_DISCOVERIES,
@@ -122,7 +121,10 @@ export async function profileRoutes(
         if (error instanceof InvalidProfileCursorError) {
           return reply.code(400).send({ message: error.message });
         }
-        if (deadlineController.signal.aborted) {
+        if (
+          deadlineController.signal.aborted ||
+          error instanceof ProfileDiscoveryTimeoutError
+        ) {
           request.log.warn(
             { durationMs: Math.round(performance.now() - startedAt) },
             'Profile discovery timed out',
