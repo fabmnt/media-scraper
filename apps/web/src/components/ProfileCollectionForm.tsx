@@ -159,6 +159,7 @@ export function ProfileCollectionForm() {
 
       {activeLookup &&
         !discovery.isPending &&
+        !discovery.error &&
         media.length === 0 &&
         !nextCursor && (
           <div className="empty-state">

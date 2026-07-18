@@ -24,6 +24,10 @@ const profileCursorSchema = z.object({
 
 export type ProfileSourceCursor = z.infer<typeof profileSourceCursorSchema>;
 
+export class InvalidProfileCursorError extends Error {
+  override readonly name = 'InvalidProfileCursorError';
+}
+
 interface ProfileCursorContext {
   platform: Platform;
   username: string;
@@ -34,7 +38,7 @@ export function decodeProfileCursor(
   cursor: string | undefined,
   context: ProfileCursorContext,
 ) {
-  if (!cursor) {
+  if (cursor === undefined) {
     return {
       profileIdentifier: undefined,
       sources: Array.from(
@@ -60,9 +64,10 @@ export function decodeProfileCursor(
       sources: payload.sources,
     };
   } catch (error) {
-    throw new Error('The profile continuation cursor is invalid.', {
-      cause: error,
-    });
+    throw new InvalidProfileCursorError(
+      'The profile continuation cursor is invalid.',
+      { cause: error },
+    );
   }
 }
 

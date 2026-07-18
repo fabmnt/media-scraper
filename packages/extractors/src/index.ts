@@ -1,4 +1,5 @@
 export { discoverProfileMedia } from './profile-discovery.js';
+export { InvalidProfileCursorError } from './profile-pagination.js';
 
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';

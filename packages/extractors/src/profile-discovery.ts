@@ -12,6 +12,7 @@ import { z } from 'zod';
 import {
   decodeProfileCursor,
   encodeProfileCursor,
+  InvalidProfileCursorError,
   type ProfileSourceCursor,
 } from './profile-pagination.js';
 
@@ -324,7 +325,9 @@ async function extractProfileSource(
   signal?: AbortSignal,
 ) {
   if (offset > Number.MAX_SAFE_INTEGER - PROFILE_PAGE_FETCH_SIZE) {
-    throw new Error('The profile continuation cursor is invalid.');
+    throw new InvalidProfileCursorError(
+      'The profile continuation cursor is invalid.',
+    );
   }
   const rangeStart = offset + 1;
   const rangeEnd = offset + PROFILE_PAGE_FETCH_SIZE;
@@ -490,7 +493,8 @@ export async function discoverProfileMedia(
     }),
   );
   const sourcePages = sourceResults.map((result) => result.entries);
-  const extractionErrors = sourceResults.flatMap((result) => result.errors);
+  const extractionError = sourceResults.flatMap((result) => result.errors)[0];
+  if (extractionError) throw extractionError;
 
   const candidates = new Map<string, ProfileMedia>();
   for (const [index, entries] of sourcePages.entries()) {
@@ -506,10 +510,6 @@ export async function discoverProfileMedia(
       (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
     )
     .slice(0, MAX_PROFILE_MEDIA);
-
-  if (items.length === 0 && extractionErrors[0]) {
-    throw extractionErrors[0];
-  }
 
   const selectedUrls = new Set(items.map((item) => item.sourceUrl));
   let hasContinuation = false;
