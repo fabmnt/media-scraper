@@ -19,6 +19,7 @@ export class ProfileDiscoveryLimiter {
   async run<T>(signal: AbortSignal, operation: () => Promise<T>) {
     const release = await this.acquire(signal);
     try {
+      signal.throwIfAborted();
       return await operation();
     } finally {
       release();

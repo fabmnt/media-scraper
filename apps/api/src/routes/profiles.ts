@@ -46,11 +46,15 @@ export async function profileRoutes(
       const startedAt = performance.now();
       const requestController = new AbortController();
       const deadlineController = new AbortController();
-      const deadline = setTimeout(
-        () => deadlineController.abort(new ProfileDiscoveryTimeoutError()),
-        timeoutMs,
-      );
-      deadline.unref();
+      let deadline: NodeJS.Timeout | undefined;
+      const deadlinePromise = new Promise<never>((_resolve, reject) => {
+        const timeoutError = new ProfileDiscoveryTimeoutError();
+        deadline = setTimeout(() => {
+          deadlineController.abort(timeoutError);
+          reject(timeoutError);
+        }, timeoutMs);
+        deadline.unref();
+      });
       const signal = AbortSignal.any([
         requestController.signal,
         deadlineController.signal,
@@ -66,7 +70,7 @@ export async function profileRoutes(
           credentialsRoot,
           input.platform,
         );
-        const result = await cache.page(
+        const lookup = cache.page(
           input,
           credential?.version ?? 'public',
           signal,
@@ -103,6 +107,7 @@ export async function profileRoutes(
             });
           },
         );
+        const result = await Promise.race([lookup, deadlinePromise]);
         request.log.info(
           {
             durationMs: Math.round(performance.now() - startedAt),
@@ -143,7 +148,7 @@ export async function profileRoutes(
               : 'Could not read this profile',
         });
       } finally {
-        clearTimeout(deadline);
+        if (deadline) clearTimeout(deadline);
         reply.raw.off('close', abortDiscovery);
       }
     },

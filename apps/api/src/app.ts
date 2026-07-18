@@ -64,6 +64,7 @@ export async function buildApp(config: ApiConfig) {
   const redis = new Redis(config.redisUrl, {
     commandTimeout: DATASTORE_COMMAND_TIMEOUT_MS,
     connectTimeout: DATASTORE_CONNECT_TIMEOUT_MS,
+    enableOfflineQueue: false,
     maxRetriesPerRequest: MAX_API_REDIS_RETRIES,
   });
   const storage = new MediaStorage(config.mediaStorage);
