@@ -22,7 +22,6 @@ const PROFILE_RESOLUTION_TIMEOUT_MS = 30_000;
 const MAX_CONCURRENT_DISCOVERY_PROCESSES = 2;
 const MAX_DISCOVERY_OUTPUT_BYTES = 16 * 1024 * 1024;
 const MAX_PROFILE_PAGE_BYTES = 2 * 1024 * 1024;
-const PROFILE_PAGE_FETCH_SIZE = MAX_PROFILE_MEDIA + 1;
 const INSTAGRAM_PROFILE_ID_PATTERNS = [
   /"profile_id":"(\d+)"/,
   /"page_id":"profilePage_(\d+)"/,
@@ -321,21 +320,23 @@ async function extractProfileSource(
   platform: Platform,
   url: string,
   offset: number,
+  pageSize: number,
   authenticationArguments: string[],
   signal?: AbortSignal,
 ) {
-  if (offset > Number.MAX_SAFE_INTEGER - PROFILE_PAGE_FETCH_SIZE) {
+  const fetchSize = pageSize + 1;
+  if (offset > Number.MAX_SAFE_INTEGER - fetchSize) {
     throw new InvalidProfileCursorError(
       'The profile continuation cursor is invalid.',
     );
   }
   const rangeStart = offset + 1;
-  const rangeEnd = offset + PROFILE_PAGE_FETCH_SIZE;
+  const rangeEnd = offset + fetchSize;
   const postRange =
     platform === 'tiktok'
-      ? `1-${String(PROFILE_PAGE_FETCH_SIZE)}`
+      ? `1-${String(fetchSize)}`
       : `${String(rangeStart)}-${String(rangeEnd)}`;
-  const maxPosts = platform === 'tiktok' ? PROFILE_PAGE_FETCH_SIZE : rangeEnd;
+  const maxPosts = platform === 'tiktok' ? fetchSize : rangeEnd;
 
   let stdout: string;
   await acquireDiscoverySlot(signal);
@@ -451,6 +452,7 @@ export async function discoverProfileMedia(
   { platform, username, cursor }: ProfileLookup,
   cookiesPath?: string,
   signal?: AbortSignal,
+  pageSize: number = MAX_PROFILE_MEDIA,
 ): Promise<ProfileMediaResults> {
   const sourceCount = platform === 'instagram' ? 2 : 1;
   const cursorContext = { platform, username, sourceCount };
@@ -469,6 +471,7 @@ export async function discoverProfileMedia(
           platform,
           source.url,
           continuation.sources[index]?.offset ?? 0,
+          pageSize,
           authenticationArguments,
           signal,
         );
@@ -509,7 +512,7 @@ export async function discoverProfileMedia(
     .sort((left, right) =>
       (right.publishedAt ?? '').localeCompare(left.publishedAt ?? ''),
     )
-    .slice(0, MAX_PROFILE_MEDIA);
+    .slice(0, pageSize);
 
   const selectedUrls = new Set(items.map((item) => item.sourceUrl));
   let hasContinuation = false;
@@ -536,10 +539,7 @@ export async function discoverProfileMedia(
         .flatMap((entry) => (entry ? [entry.sourceUrl] : [])),
     );
     const skipUrls = [...emittedUrls].filter((url) => remainingUrls.has(url));
-    if (
-      consumedEntries < entries.length ||
-      entries.length === PROFILE_PAGE_FETCH_SIZE
-    ) {
+    if (consumedEntries < entries.length || entries.length === pageSize + 1) {
       hasContinuation = true;
     }
     return {

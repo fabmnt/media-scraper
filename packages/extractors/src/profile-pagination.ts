@@ -1,6 +1,6 @@
 import {
   MAX_PROFILE_CURSOR_LENGTH,
-  MAX_PROFILE_MEDIA,
+  PROFILE_DISCOVERY_CACHE_ITEMS,
   platformSchema,
   type Platform,
 } from '@media-scraper/shared';
@@ -9,7 +9,7 @@ import { z } from 'zod';
 const PROFILE_CURSOR_VERSION = 1;
 const profileSourceCursorSchema = z.object({
   offset: z.number().int().nonnegative().safe(),
-  skipUrls: z.array(z.url()).max(MAX_PROFILE_MEDIA),
+  skipUrls: z.array(z.url()).max(PROFILE_DISCOVERY_CACHE_ITEMS),
 });
 const profileCursorSchema = z.object({
   version: z.literal(PROFILE_CURSOR_VERSION),

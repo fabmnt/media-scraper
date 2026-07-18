@@ -18,6 +18,7 @@ export const MAX_CREDENTIAL_LENGTH = 1_000_000;
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 100;
 export const MAX_PROFILE_MEDIA = 24;
+export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA * 4;
 export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);

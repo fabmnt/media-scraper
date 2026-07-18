@@ -9,7 +9,9 @@ const DEFAULT_MAX_COLLECTION_BYTES = 500 * 1024 * 1024;
 const DEFAULT_MAX_MEDIA_STORAGE_BYTES = 4 * 1024 * 1024 * 1024;
 const DEFAULT_OPTIMIZATION_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEFAULT_PRESIGNED_URL_TTL_SECONDS = 15 * 60;
+const DEFAULT_PROFILE_DISCOVERY_CACHE_TTL_SECONDS = 10 * 60;
 const MAX_PRESIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const MAX_PROFILE_DISCOVERY_CACHE_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_RETENTION_TARGET_PERCENT = 70;
 const DEFAULT_RETENTION_TRIGGER_PERCENT = 80;
 const DEFAULT_VIDEO_MAX_DIMENSION = 1_280;
@@ -92,6 +94,9 @@ const apiEnvironmentSchema = commonEnvironmentSchema
     // development, but prefer PORT when API_PORT is not explicitly configured.
     API_PORT: positiveInteger.optional(),
     COOKIE_SECURE: z.stringbool().default(false),
+    PROFILE_DISCOVERY_CACHE_TTL_SECONDS: positiveInteger
+      .max(MAX_PROFILE_DISCOVERY_CACHE_TTL_SECONDS)
+      .default(DEFAULT_PROFILE_DISCOVERY_CACHE_TTL_SECONDS),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
   })
   .superRefine(validateStorageEnvironment);
