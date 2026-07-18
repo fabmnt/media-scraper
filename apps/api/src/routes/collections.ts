@@ -214,7 +214,8 @@ export async function collectionRoutes(
       if (
         !existingJob ||
         existingJobState === 'failed' ||
-        existingJobState === 'completed'
+        existingJobState === 'completed' ||
+        existingJobState === 'unknown'
       ) {
         await queue.add(
           COLLECTION_QUEUE_NAME,

@@ -173,7 +173,9 @@ export function ProfileCollectionForm() {
                 }
                 type="button"
               >
-                Select all
+                {media.length > MAX_COLLECTION_BATCH_SIZE
+                  ? `Select first ${String(MAX_COLLECTION_BATCH_SIZE)}`
+                  : 'Select all'}
               </button>
               <button
                 className="text-button"
