@@ -12,7 +12,7 @@ import {
 import { InvalidProfileCursorError } from '@media-scraper/extractors';
 import { z } from 'zod';
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const CACHE_KEY_PREFIX = `profile-discovery:v${String(CACHE_VERSION)}`;
 const cacheCursorSchema = z.object({
   version: z.literal(CACHE_VERSION),
@@ -44,6 +44,10 @@ interface InFlightLoad {
   consumers: number;
   promise: Promise<SnapshotResult>;
   settled: boolean;
+}
+
+export class ProfileDiscoveryTimeoutError extends Error {
+  override readonly name = 'ProfileDiscoveryTimeoutError';
 }
 
 function invalidCursor(
@@ -80,6 +84,7 @@ export class ProfileDiscoveryCache {
   constructor(
     private readonly redis: Redis,
     private readonly ttlSeconds: number,
+    private readonly loadTimeoutMs: number,
   ) {}
 
   close() {
@@ -328,17 +333,31 @@ export class ProfileDiscoveryCache {
     let active = this.inFlight.get(key);
     if (!active) {
       const abortController = new AbortController();
+      const deadlineController = new AbortController();
+      let deadline: NodeJS.Timeout | undefined;
+      const deadlinePromise = new Promise<never>((_resolve, reject) => {
+        const timeoutError = new ProfileDiscoveryTimeoutError();
+        deadline = setTimeout(() => {
+          deadlineController.abort(timeoutError);
+          reject(timeoutError);
+        }, this.loadTimeoutMs);
+        deadline.unref();
+      });
       const signal = AbortSignal.any([
         this.abortController.signal,
         abortController.signal,
+        deadlineController.signal,
       ]);
       const load: InFlightLoad = {
         abortController,
         consumers: 0,
-        promise: operation(signal).finally(() => {
-          load.settled = true;
-          if (this.inFlight.get(key) === load) this.inFlight.delete(key);
-        }),
+        promise: Promise.race([operation(signal), deadlinePromise]).finally(
+          () => {
+            if (deadline) clearTimeout(deadline);
+            load.settled = true;
+            if (this.inFlight.get(key) === load) this.inFlight.delete(key);
+          },
+        ),
         settled: false,
       };
       active = load;
