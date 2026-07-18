@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  MAX_COLLECTION_BATCH_SIZE,
   SUPPORTED_PLATFORMS,
   type Platform,
   type ProfileLookupInput,
@@ -8,8 +9,6 @@ import {
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
-
-const PROFILE_QUEUE_CONCURRENCY = 4;
 
 export function ProfileCollectionForm() {
   const [platform, setPlatform] = useState<Platform>('instagram');
@@ -45,43 +44,26 @@ export function ProfileCollectionForm() {
     },
   });
   const queue = useMutation({
-    mutationFn: async (media: ProfileMedia[]) => {
-      const results: PromiseSettledResult<unknown>[] = [];
-      for (
-        let offset = 0;
-        offset < media.length;
-        offset += PROFILE_QUEUE_CONCURRENCY
-      ) {
-        results.push(
-          ...(await Promise.allSettled(
-            media
-              .slice(offset, offset + PROFILE_QUEUE_CONCURRENCY)
-              .map((item) => api.createCollection({ url: item.sourceUrl })),
-          )),
-        );
-      }
-      const queuedUrls = media.flatMap((item, index) =>
-        results[index]?.status === 'fulfilled' ? [item.sourceUrl] : [],
-      );
-      const failures = results.filter(
-        (result): result is PromiseRejectedResult =>
-          result.status === 'rejected',
-      );
-      if (queuedUrls.length === 0 && failures[0]) {
-        throw failures[0].reason;
-      }
-      return { failedCount: failures.length, queuedUrls };
-    },
+    mutationFn: (media: ProfileMedia[]) =>
+      api.createCollectionBatch({
+        items: media.map((item) => ({ url: item.sourceUrl })),
+      }),
     onMutate: () => setQueueMessage(''),
-    onSuccess: ({ failedCount, queuedUrls }) => {
-      const queuedUrlSet = new Set(queuedUrls);
+    onSuccess: (collections) => {
+      const queuedCollections = collections.filter(
+        (collection) => collection.status === 'queued',
+      );
+      const queuedUrlSet = new Set(
+        queuedCollections.map((collection) => collection.sourceUrl),
+      );
       setSelectedUrls((current) =>
         current.filter((url) => !queuedUrlSet.has(url)),
       );
+      const failedCount = collections.length - queuedCollections.length;
       setQueueMessage(
         failedCount > 0
-          ? `${String(queuedUrls.length)} queued; ${String(failedCount)} could not be queued.`
-          : `${String(queuedUrls.length)} media item${queuedUrls.length === 1 ? '' : 's'} queued.`,
+          ? `${String(queuedCollections.length)} queued; ${String(failedCount)} could not be queued.`
+          : `${String(queuedCollections.length)} media item${queuedCollections.length === 1 ? '' : 's'} queued.`,
       );
     },
     onSettled: async () => {
@@ -93,6 +75,8 @@ export function ProfileCollectionForm() {
   const selectedMedia = media.filter((item) =>
     selectedUrlSet.has(item.sourceUrl),
   );
+  const selectionLimitReached =
+    selectedUrls.length >= MAX_COLLECTION_BATCH_SIZE;
 
   function findProfile(event: FormEvent) {
     event.preventDefault();
@@ -105,11 +89,14 @@ export function ProfileCollectionForm() {
   }
 
   function toggleSelection(sourceUrl: string) {
-    setSelectedUrls((current) =>
-      current.includes(sourceUrl)
-        ? current.filter((url) => url !== sourceUrl)
-        : [...current, sourceUrl],
-    );
+    setSelectedUrls((current) => {
+      if (current.includes(sourceUrl)) {
+        return current.filter((url) => url !== sourceUrl);
+      }
+      return current.length < MAX_COLLECTION_BATCH_SIZE
+        ? [...current, sourceUrl]
+        : current;
+    });
     setQueueMessage('');
   }
 
@@ -171,17 +158,24 @@ export function ProfileCollectionForm() {
         <>
           <div className="profile-selection-toolbar">
             <span>
-              {selectedUrls.length} of {media.length} selected
+              {selectedUrls.length} of {media.length} selected ·{' '}
+              {MAX_COLLECTION_BATCH_SIZE} maximum
             </span>
             <div>
               <button
                 className="text-button"
                 onClick={() =>
-                  setSelectedUrls(media.map((item) => item.sourceUrl))
+                  setSelectedUrls(
+                    media
+                      .slice(0, MAX_COLLECTION_BATCH_SIZE)
+                      .map((item) => item.sourceUrl),
+                  )
                 }
                 type="button"
               >
-                Select all
+                {media.length > MAX_COLLECTION_BATCH_SIZE
+                  ? `Select first ${String(MAX_COLLECTION_BATCH_SIZE)}`
+                  : 'Select all'}
               </button>
               <button
                 className="text-button"
@@ -202,16 +196,24 @@ export function ProfileCollectionForm() {
             </div>
           </div>
 
+          {selectionLimitReached && media.length > selectedUrls.length && (
+            <p className="profile-selection-limit" role="status">
+              Selection limit reached. Deselect an item to choose another.
+            </p>
+          )}
+
           <div className="profile-media-grid">
             {media.map((item) => {
               const isSelected = selectedUrlSet.has(item.sourceUrl);
+              const isSelectionDisabled = !isSelected && selectionLimitReached;
               return (
                 <label
-                  className={`profile-media-option${isSelected ? ' selected' : ''}`}
+                  className={`profile-media-option${isSelected ? ' selected' : ''}${isSelectionDisabled ? ' disabled' : ''}`}
                   key={item.sourceUrl}
                 >
                   <input
                     checked={isSelected}
+                    disabled={isSelectionDisabled}
                     onChange={() => toggleSelection(item.sourceUrl)}
                     type="checkbox"
                   />

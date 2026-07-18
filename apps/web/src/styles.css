@@ -420,6 +420,11 @@ footer {
 .profile-selection-toolbar .text-button:hover {
   color: var(--accent);
 }
+.profile-selection-limit {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 .profile-media-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -441,6 +446,14 @@ footer {
 .profile-media-option.selected {
   border-color: var(--accent);
   transform: translateY(-2px);
+}
+.profile-media-option.disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.profile-media-option.disabled:hover {
+  border-color: var(--line);
+  transform: none;
 }
 .profile-media-option > input {
   position: absolute;
