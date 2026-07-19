@@ -76,10 +76,11 @@ export async function processProfileBackfill(
   }
 
   try {
-    const startedAt = backfill.startedAt ?? new Date();
+    const updatedAt = new Date();
+    const startedAt = backfill.startedAt ?? updatedAt;
     await db
       .update(profileBackfills)
-      .set({ status: 'processing', startedAt, updatedAt: startedAt })
+      .set({ status: 'processing', startedAt, updatedAt })
       .where(eq(profileBackfills.id, backfill.id));
 
     const cookiesPath = await profileCredentialPath(
@@ -107,7 +108,7 @@ export async function processProfileBackfill(
 
     const completed = result.nextCursor === null;
     const nextPageNumber = backfill.pageNumber + 1;
-    const updatedAt = new Date();
+    const completedAt = new Date();
     await db
       .update(profileBackfills)
       .set({
@@ -117,8 +118,8 @@ export async function processProfileBackfill(
         itemsDiscovered: backfill.itemsDiscovered + result.items.length,
         collectionsQueued: backfill.collectionsQueued + collectionsQueued,
         lastError: null,
-        completedAt: completed ? updatedAt : null,
-        updatedAt,
+        completedAt: completed ? completedAt : null,
+        updatedAt: completedAt,
       })
       .where(eq(profileBackfills.id, backfill.id));
 

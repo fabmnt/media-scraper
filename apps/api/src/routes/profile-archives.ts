@@ -123,7 +123,9 @@ export async function profileArchiveRoutes(
           'Could not record profile archive failure',
         );
       }
-      throw new ProfileArchiveQueueError('Profile archive could not be queued');
+      throw new ProfileArchiveQueueError(
+        `Automatic collection was saved, but the profile archive could not be queued. Retry it with /profile-archives/${created.profile.id}/retry.`,
+      );
     }
 
     return reply.code(202).send({
@@ -134,21 +136,25 @@ export async function profileArchiveRoutes(
 
   app.post('/:id/retry', async (request, reply): Promise<ProfileArchive> => {
     const { id } = profileArchiveParamsSchema.parse(request.params);
+    const [profile] = await db
+      .select()
+      .from(automaticProfiles)
+      .where(eq(automaticProfiles.id, id));
+    if (!profile) {
+      const error = new Error('Profile archive not found');
+      Object.assign(error, { statusCode: 404 });
+      throw error;
+    }
     const [backfill] = await db
       .select()
       .from(profileBackfills)
-      .where(eq(profileBackfills.id, id));
+      .where(eq(profileBackfills.automaticProfileId, profile.id));
     if (!backfill) {
       const error = new Error('Profile archive not found');
       Object.assign(error, { statusCode: 404 });
       throw error;
     }
-
-    const [profile] = await db
-      .select()
-      .from(automaticProfiles)
-      .where(eq(automaticProfiles.id, backfill.automaticProfileId));
-    if (!profile?.enabled) {
+    if (!profile.enabled) {
       const error = new Error(
         'Resume automatic collection before retrying this profile archive',
       );
