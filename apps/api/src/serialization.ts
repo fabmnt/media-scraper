@@ -56,6 +56,7 @@ export function serializeProfileBackfill(
     id: row.id,
     automaticProfileId: row.automaticProfileId,
     status: row.status,
+    includeStories: row.includeStories,
     pageNumber: row.pageNumber,
     itemsDiscovered: row.itemsDiscovered,
     collectionsQueued: row.collectionsQueued,

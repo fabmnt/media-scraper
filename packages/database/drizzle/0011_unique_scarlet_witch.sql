@@ -1,0 +1,1 @@
+ALTER TABLE "profile_backfills" ADD COLUMN "include_stories" boolean DEFAULT false NOT NULL;

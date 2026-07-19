@@ -86,6 +86,7 @@ export const profileBackfills = pgTable(
       .notNull()
       .references(() => automaticProfiles.id, { onDelete: 'cascade' }),
     status: profileBackfillStatusEnum('status').notNull().default('queued'),
+    includeStories: boolean('include_stories').notNull().default(false),
     cursor: text('cursor'),
     pageNumber: integer('page_number').notNull().default(0),
     itemsDiscovered: integer('items_discovered').notNull().default(0),

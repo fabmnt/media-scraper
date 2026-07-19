@@ -78,6 +78,13 @@
       "when": 1784475466952,
       "tag": "0010_premium_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784484571443,
+      "tag": "0011_unique_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

@@ -272,6 +272,7 @@ export const profileBackfillSchema = z.object({
   id: z.uuid(),
   automaticProfileId: z.uuid(),
   status: profileBackfillStatusSchema,
+  includeStories: z.boolean(),
   pageNumber: z.number().int().nonnegative(),
   itemsDiscovered: z.number().int().nonnegative(),
   collectionsQueued: z.number().int().nonnegative(),

@@ -1,23 +1,30 @@
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   createAutomaticProfileSchema,
   STORY_SUPPORTED_PLATFORMS,
   updateAutomaticProfileSchema,
   type AutomaticProfileJobPayload,
+  type ProfileBackfillJobPayload,
 } from '@media-scraper/shared';
-import { automaticProfiles, type Database } from '@media-scraper/database';
+import {
+  automaticProfiles,
+  profileBackfills,
+  type Database,
+} from '@media-scraper/database';
 import {
   queueAutomaticProfileCheck,
   removeAutomaticProfileScheduler,
   upsertAutomaticProfileScheduler,
 } from '../automatic-profile-scheduler.js';
+import { queueProfileBackfill } from '../profile-backfill-queue.js';
 import { serializeAutomaticProfile } from '../serialization.js';
 
 interface AutomaticProfileRoutesOptions {
   db: Database;
+  profileBackfillQueue: Queue<ProfileBackfillJobPayload>;
   queue: Queue<AutomaticProfileJobPayload>;
 }
 
@@ -46,7 +53,7 @@ function isUniqueViolation(error: unknown) {
 
 export async function automaticProfileRoutes(
   app: FastifyInstance,
-  { db, queue }: AutomaticProfileRoutesOptions,
+  { db, profileBackfillQueue, queue }: AutomaticProfileRoutesOptions,
 ) {
   app.get('/', async () => {
     const profiles = await db
@@ -136,6 +143,27 @@ export async function automaticProfileRoutes(
         : null;
       if (!profile.enabled) {
         await removeAutomaticProfileScheduler(queue, profile.id);
+      }
+      if (input.enabled === true) {
+        const [backfill] = await db
+          .select({
+            id: profileBackfills.id,
+            pageNumber: profileBackfills.pageNumber,
+          })
+          .from(profileBackfills)
+          .where(
+            and(
+              eq(profileBackfills.automaticProfileId, profile.id),
+              inArray(profileBackfills.status, ['queued', 'processing']),
+            ),
+          );
+        if (backfill) {
+          await queueProfileBackfill(
+            profileBackfillQueue,
+            backfill.id,
+            backfill.pageNumber,
+          );
+        }
       }
       const [scheduledProfile] = await db
         .update(automaticProfiles)

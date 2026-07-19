@@ -1,5 +1,5 @@
 import type { Queue } from 'bullmq';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import {
   automaticProfiles,
   profileBackfills,
@@ -62,13 +62,15 @@ export async function processProfileBackfill(
   const [profile] = await db
     .select()
     .from(automaticProfiles)
-    .where(
-      and(
-        eq(automaticProfiles.id, backfill.automaticProfileId),
-        eq(automaticProfiles.enabled, true),
-      ),
-    );
+    .where(eq(automaticProfiles.id, backfill.automaticProfileId));
   if (!profile) return { collectionsQueued: 0, completed: false };
+  if (!profile.enabled) {
+    await db
+      .update(profileBackfills)
+      .set({ status: 'queued', updatedAt: new Date() })
+      .where(eq(profileBackfills.id, backfill.id));
+    return { collectionsQueued: 0, completed: false };
+  }
 
   try {
     const startedAt = backfill.startedAt ?? new Date();
@@ -90,7 +92,7 @@ export async function processProfileBackfill(
       cookiesPath,
       signal,
       MAX_PROFILE_MEDIA,
-      { includeStories: profile.includeStories },
+      { includeStories: backfill.includeStories },
     );
     signal.throwIfAborted();
     const collectionsQueued = await queueDiscoveredProfileMedia(

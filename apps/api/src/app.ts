@@ -145,6 +145,7 @@ export async function buildApp(config: ApiConfig) {
   await app.register(automaticProfileRoutes, {
     prefix: '/automatic-profiles',
     db: database.db,
+    profileBackfillQueue,
     queue: automaticProfileQueue,
   });
   await app.register(profileArchiveRoutes, {

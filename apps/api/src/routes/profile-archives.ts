@@ -65,7 +65,10 @@ export async function profileArchiveRoutes(
         if (!profile) throw new Error('Failed to create automatic profile');
         const [backfill] = await transaction
           .insert(profileBackfills)
-          .values({ automaticProfileId: profile.id })
+          .values({
+            automaticProfileId: profile.id,
+            includeStories: input.includeStories,
+          })
           .returning();
         if (!backfill) throw new Error('Failed to create profile archive');
         return { profile, backfill };
