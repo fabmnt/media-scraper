@@ -143,9 +143,10 @@ export function MediaPreview({
           {asset?.type === 'image' ? (
             <img
               alt={item.caption ?? `${item.platform} media`}
-              onTouchEnd={(event) =>
-                handleSwipeEnd(event.changedTouches[0]?.clientX ?? 0)
-              }
+              onTouchEnd={(event) => {
+                const touch = event.changedTouches[0];
+                if (touch) handleSwipeEnd(touch.clientX);
+              }}
               onTouchStart={(event) => {
                 swipeStartX.current = event.touches[0]?.clientX;
               }}

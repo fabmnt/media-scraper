@@ -67,12 +67,24 @@ export function MediaCard({
         }
         onPreview();
       }}
+      onKeyDown={(event) => {
+        if (
+          event.target !== event.currentTarget ||
+          (event.key !== 'Enter' && event.key !== ' ')
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onPreview();
+      }}
+      tabIndex={0}
     >
       <div
         className="preview"
         onTouchEnd={(event) => {
-          if (selectedAsset?.type === 'image') {
-            handleSwipeEnd(event.changedTouches[0]?.clientX ?? 0);
+          const touch = event.changedTouches[0];
+          if (selectedAsset?.type === 'image' && touch) {
+            handleSwipeEnd(touch.clientX);
           }
         }}
         onTouchStart={(event) => {
@@ -92,6 +104,7 @@ export function MediaCard({
             autoPlay
             controls
             key={selectedAsset.id}
+            onClick={(event) => event.stopPropagation()}
             loop
             muted
             playsInline

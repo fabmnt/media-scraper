@@ -268,14 +268,15 @@ export function Gallery() {
   });
   const remove = useMutation({
     mutationFn: (ids: string[]) => Promise.all(ids.map(api.deleteMedia)),
-    onSuccess: async (_, ids) => {
+    onSuccess: (_, ids) => {
       setSelectedIds((current) => {
         const next = new Set(current);
         for (const id of ids) next.delete(id);
         return next;
       });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.allMedia });
     },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.allMedia }),
   });
 
   function deleteItem(item: MediaItem) {
