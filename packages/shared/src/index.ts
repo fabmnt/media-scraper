@@ -8,6 +8,12 @@ export const COLLECTION_STATUSES = [
   'failed',
 ] as const;
 export const COLLECTION_ORIGINS = ['manual', 'automatic'] as const;
+export const PROFILE_BACKFILL_STATUSES = [
+  'queued',
+  'processing',
+  'completed',
+  'failed',
+] as const;
 export const MEDIA_TYPES = ['image', 'video'] as const;
 export const MEDIA_GROUP_MODES = ['none', 'username', 'platform'] as const;
 export const MEDIA_SORT_OPTIONS = ['collectedAt', 'publishedAt'] as const;
@@ -20,6 +26,8 @@ export const COLLECTION_QUEUE_NAME = 'media-collections';
 export const AUTOMATIC_PROFILE_QUEUE_NAME = 'automatic-profile-polls';
 export const AUTOMATIC_PROFILE_JOB_NAME = 'check-profile';
 export const AUTOMATIC_PROFILE_SCHEDULER_PREFIX = 'automatic-profile:';
+export const PROFILE_BACKFILL_QUEUE_NAME = 'profile-backfills';
+export const PROFILE_BACKFILL_JOB_NAME = 'backfill-profile';
 export const MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES = 15;
 export const MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES = 7 * 24 * 60;
 export const AUTOMATIC_COLLECTION_INTERVAL_OPTIONS = [
@@ -52,6 +60,12 @@ export const AUTOMATIC_PROFILE_JOB_OPTIONS = {
   removeOnComplete: { count: 1_000 },
   removeOnFail: { count: 1_000 },
 };
+export const PROFILE_BACKFILL_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential' as const, delay: 5_000 },
+  removeOnComplete: { count: 1_000 },
+  removeOnFail: { count: 1_000 },
+};
 
 export function automaticProfileSchedulerId(profileId: string) {
   return `${AUTOMATIC_PROFILE_SCHEDULER_PREFIX}${profileId}`;
@@ -60,6 +74,7 @@ export function automaticProfileSchedulerId(profileId: string) {
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
 export const collectionOriginSchema = z.enum(COLLECTION_ORIGINS);
+export const profileBackfillStatusSchema = z.enum(PROFILE_BACKFILL_STATUSES);
 export const mediaTypeSchema = z.enum(MEDIA_TYPES);
 export const mediaGroupModeSchema = z.enum(MEDIA_GROUP_MODES);
 export const mediaSortSchema = z.enum(MEDIA_SORT_OPTIONS);
@@ -206,6 +221,8 @@ export const createAutomaticProfileSchema = z
     },
   );
 
+export const createProfileArchiveSchema = createAutomaticProfileSchema;
+
 export const updateAutomaticProfileSchema = z
   .object({
     enabled: z.boolean().optional(),
@@ -239,6 +256,9 @@ export const automaticProfileSchema = z.object({
 export type CreateAutomaticProfileInput = z.input<
   typeof createAutomaticProfileSchema
 >;
+export type CreateProfileArchiveInput = z.input<
+  typeof createProfileArchiveSchema
+>;
 export type UpdateAutomaticProfileInput = z.input<
   typeof updateAutomaticProfileSchema
 >;
@@ -246,6 +266,34 @@ export type AutomaticProfile = z.infer<typeof automaticProfileSchema>;
 export interface AutomaticProfileJobPayload {
   profileId: string;
   force?: boolean;
+}
+
+export const profileBackfillSchema = z.object({
+  id: z.uuid(),
+  automaticProfileId: z.uuid(),
+  status: profileBackfillStatusSchema,
+  includeStories: z.boolean(),
+  pageNumber: z.number().int().nonnegative(),
+  itemsDiscovered: z.number().int().nonnegative(),
+  collectionsQueued: z.number().int().nonnegative(),
+  lastError: z.string().nullable(),
+  startedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+
+export const profileArchiveSchema = z.object({
+  profile: automaticProfileSchema,
+  backfill: profileBackfillSchema,
+});
+
+export type ProfileBackfillStatus = z.infer<typeof profileBackfillStatusSchema>;
+export type ProfileBackfill = z.infer<typeof profileBackfillSchema>;
+export type ProfileArchive = z.infer<typeof profileArchiveSchema>;
+export interface ProfileBackfillJobPayload {
+  backfillId: string;
+  pageNumber: number;
 }
 
 export const mediaAssetSchema = z.object({

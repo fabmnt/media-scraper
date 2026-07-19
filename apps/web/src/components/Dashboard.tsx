@@ -6,6 +6,7 @@ import { AutomaticCollectionsPanel } from './AutomaticCollectionsPanel';
 import { CollectionForm } from './CollectionForm';
 import { Gallery } from './Gallery';
 import { PlatformCredentials } from './PlatformCredentials';
+import { ProfileArchiveForm } from './ProfileArchiveForm';
 import { ProfileCollectionForm } from './ProfileCollectionForm';
 import { JobsPanel } from './JobsPanel';
 
@@ -129,6 +130,7 @@ export function Dashboard() {
             ))}
           {activeTab === 'get-media' && (
             <div className="get-media">
+              <ProfileArchiveForm />
               <AutomaticCollectionsPanel />
               <ProfileCollectionForm />
               <CollectionForm />

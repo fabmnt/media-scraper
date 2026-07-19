@@ -3,6 +3,7 @@ import type {
   Collection,
   CollectionStatus,
   CreateAutomaticProfileInput,
+  CreateProfileArchiveInput,
   CredentialStatus,
   CreateCollectionBatchInput,
   CreateCollectionInput,
@@ -11,6 +12,7 @@ import type {
   MediaSort,
   Page,
   Platform,
+  ProfileArchive,
   ProfileLookupInput,
   ProfileMediaResults,
   UpdateAutomaticProfileInput,
@@ -95,6 +97,12 @@ export const api = {
     request<AutomaticProfile[]>('/automatic-profiles'),
   createAutomaticProfile: (input: CreateAutomaticProfileInput) =>
     request<AutomaticProfile>('/automatic-profiles', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  createProfileArchive: (input: CreateProfileArchiveInput) =>
+    request<ProfileArchive>('/profile-archives', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),

@@ -1,23 +1,30 @@
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   createAutomaticProfileSchema,
   STORY_SUPPORTED_PLATFORMS,
   updateAutomaticProfileSchema,
   type AutomaticProfileJobPayload,
+  type ProfileBackfillJobPayload,
 } from '@media-scraper/shared';
-import { automaticProfiles, type Database } from '@media-scraper/database';
+import {
+  automaticProfiles,
+  profileBackfills,
+  type Database,
+} from '@media-scraper/database';
 import {
   queueAutomaticProfileCheck,
   removeAutomaticProfileScheduler,
   upsertAutomaticProfileScheduler,
 } from '../automatic-profile-scheduler.js';
+import { queueProfileBackfill } from '../profile-backfill-queue.js';
 import { serializeAutomaticProfile } from '../serialization.js';
 
 interface AutomaticProfileRoutesOptions {
   db: Database;
+  profileBackfillQueue: Queue<ProfileBackfillJobPayload>;
   queue: Queue<AutomaticProfileJobPayload>;
 }
 
@@ -46,7 +53,7 @@ function isUniqueViolation(error: unknown) {
 
 export async function automaticProfileRoutes(
   app: FastifyInstance,
-  { db, queue }: AutomaticProfileRoutesOptions,
+  { db, profileBackfillQueue, queue }: AutomaticProfileRoutesOptions,
 ) {
   app.get('/', async () => {
     const profiles = await db
@@ -130,6 +137,7 @@ export async function automaticProfileRoutes(
       .returning();
     if (!profile) throw new Error('Automatic profile was not updated');
 
+    let scheduledProfile: typeof automaticProfiles.$inferSelect | undefined;
     try {
       const nextCheckAt = profile.enabled
         ? await upsertAutomaticProfileScheduler(queue, profile)
@@ -137,18 +145,47 @@ export async function automaticProfileRoutes(
       if (!profile.enabled) {
         await removeAutomaticProfileScheduler(queue, profile.id);
       }
-      const [scheduledProfile] = await db
+      [scheduledProfile] = await db
         .update(automaticProfiles)
         .set({ nextCheckAt, updatedAt: new Date() })
         .where(eq(automaticProfiles.id, profile.id))
         .returning();
-      return serializeAutomaticProfile(scheduledProfile ?? profile);
     } catch (error) {
       request.log.error(error, 'Could not update automatic profile schedule');
       throw new AutomaticProfileQueueError(
         'Automatic collection settings were saved but the schedule could not be updated',
       );
     }
+
+    if (input.enabled === true) {
+      const [backfill] = await db
+        .select({
+          id: profileBackfills.id,
+          pageNumber: profileBackfills.pageNumber,
+        })
+        .from(profileBackfills)
+        .where(
+          and(
+            eq(profileBackfills.automaticProfileId, profile.id),
+            inArray(profileBackfills.status, ['queued', 'processing']),
+          ),
+        );
+      if (backfill) {
+        try {
+          await queueProfileBackfill(
+            profileBackfillQueue,
+            backfill.id,
+            backfill.pageNumber,
+          );
+        } catch (error) {
+          request.log.error(error, 'Could not resume profile archive');
+          throw new AutomaticProfileQueueError(
+            'Automatic collection was resumed but the profile archive could not be queued',
+          );
+        }
+      }
+    }
+    return serializeAutomaticProfile(scheduledProfile ?? profile);
   });
 
   app.delete('/:id', async (request, reply) => {
