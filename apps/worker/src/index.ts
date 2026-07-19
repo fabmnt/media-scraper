@@ -6,14 +6,18 @@ import { createDatabase } from '@media-scraper/database';
 import {
   AUTOMATIC_PROFILE_QUEUE_NAME,
   COLLECTION_QUEUE_NAME,
+  PROFILE_BACKFILL_QUEUE_NAME,
   type AutomaticProfileJobPayload,
   type CollectionJobPayload,
+  type ProfileBackfillJobPayload,
 } from '@media-scraper/shared';
 import { MediaStorage } from '@media-scraper/storage';
 import { reconcileAutomaticProfileSchedulers } from './automatic-profile-scheduler.js';
 import { reconcileQueuedCollections } from './collection-queue-reconciliation.js';
 import { processAutomaticProfile } from './process-automatic-profile.js';
 import { processCollection } from './process-collection.js';
+import { processProfileBackfill } from './process-profile-backfill.js';
+import { reconcileProfileBackfills } from './profile-backfill-reconciliation.js';
 import { processMediaMaintenance } from './storage-retention.js';
 
 const AUTO_COLLECTION_CONCURRENCY_LIMIT = 4;
@@ -60,18 +64,30 @@ const automaticProfileQueue = new Queue<AutomaticProfileJobPayload>(
   AUTOMATIC_PROFILE_QUEUE_NAME,
   { connection: redis },
 );
+const profileBackfillQueue = new Queue<ProfileBackfillJobPayload>(
+  PROFILE_BACKFILL_QUEUE_NAME,
+  { connection: redis },
+);
 collectionQueue.on('error', (error) => {
   console.error('Collection queue error', error);
 });
 automaticProfileQueue.on('error', (error) => {
   console.error('Automatic profile queue error', error);
 });
-const [reconciledCollectionCount, reconciledProfileCount] = await Promise.all([
+profileBackfillQueue.on('error', (error) => {
+  console.error('Profile archive queue error', error);
+});
+const [
+  reconciledCollectionCount,
+  reconciledProfileCount,
+  reconciledProfileBackfillCount,
+] = await Promise.all([
   reconcileQueuedCollections(database.db, collectionQueue),
   reconcileAutomaticProfileSchedulers(database.db, automaticProfileQueue),
+  reconcileProfileBackfills(database.db, profileBackfillQueue),
 ]);
 console.info(
-  `Reconciled ${String(reconciledCollectionCount)} queued collections and ${String(reconciledProfileCount)} automatic profile schedules`,
+  `Reconciled ${String(reconciledCollectionCount)} queued collections, ${String(reconciledProfileCount)} automatic profile schedules, and ${String(reconciledProfileBackfillCount)} profile archives`,
 );
 
 const collectionWorker = new Worker<CollectionJobPayload>(
@@ -92,6 +108,23 @@ const collectionWorker = new Worker<CollectionJobPayload>(
       videoMaxDimension: config.VIDEO_MAX_DIMENSION,
     }),
   { connection: redis, concurrency: collectionConcurrency },
+);
+const profileBackfillWorker = new Worker<ProfileBackfillJobPayload>(
+  PROFILE_BACKFILL_QUEUE_NAME,
+  async (job) =>
+    processProfileBackfill(job.data, {
+      collectionQueue,
+      credentialsRoot: config.CREDENTIALS_ROOT,
+      db: database.db,
+      isFinalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+      queue: profileBackfillQueue,
+      signal: shutdownController.signal,
+    }),
+  {
+    connection: redis,
+    concurrency: 1,
+    limiter: { max: 1, duration: PROFILE_CHECK_RATE_LIMIT_MS },
+  },
 );
 const automaticProfileWorker = new Worker<AutomaticProfileJobPayload>(
   AUTOMATIC_PROFILE_QUEUE_NAME,
@@ -149,6 +182,21 @@ collectionWorker.on('error', (error) => {
   console.error('Collection worker error', error);
 });
 
+profileBackfillWorker.on('completed', (job, result) => {
+  console.info(
+    `Profile archive ${job.data.backfillId} page ${String(job.data.pageNumber)} processed; ${String(result.collectionsQueued)} collections queued`,
+  );
+});
+profileBackfillWorker.on('failed', (job, error) => {
+  console.error(
+    `Profile archive ${job?.data.backfillId ?? 'unknown'} failed`,
+    error,
+  );
+});
+profileBackfillWorker.on('error', (error) => {
+  console.error('Profile archive worker error', error);
+});
+
 automaticProfileWorker.on('completed', (job, result) => {
   console.info(
     `Automatic profile ${job.data.profileId} checked; ${String(result.queuedCollections)} collections queued`,
@@ -172,10 +220,18 @@ function shutdown() {
     const failures: unknown[] = [];
     for (const close of [
       () =>
-        Promise.all([collectionWorker.close(), automaticProfileWorker.close()]),
+        Promise.all([
+          collectionWorker.close(),
+          automaticProfileWorker.close(),
+          profileBackfillWorker.close(),
+        ]),
       () => maintenancePromise?.catch(() => undefined),
       () =>
-        Promise.all([collectionQueue.close(), automaticProfileQueue.close()]),
+        Promise.all([
+          collectionQueue.close(),
+          automaticProfileQueue.close(),
+          profileBackfillQueue.close(),
+        ]),
       () => redis.quit(),
       () => database.close(),
       () => storage.close(),

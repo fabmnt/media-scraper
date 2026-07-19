@@ -1,6 +1,7 @@
 import type {
   AutomaticProfile,
   Collection,
+  ProfileBackfill,
   MediaAsset,
   MediaItem,
 } from '@media-scraper/shared';
@@ -10,6 +11,8 @@ export type CollectionRow =
   typeof import('@media-scraper/database').collections.$inferSelect;
 type AutomaticProfileRow =
   typeof import('@media-scraper/database').automaticProfiles.$inferSelect;
+type ProfileBackfillRow =
+  typeof import('@media-scraper/database').profileBackfills.$inferSelect;
 type MediaItemRow = typeof mediaItems.$inferSelect;
 type MediaAssetRow = typeof mediaAssets.$inferSelect;
 
@@ -41,6 +44,24 @@ export function serializeAutomaticProfile(
     nextCheckAt: row.nextCheckAt?.toISOString() ?? null,
     lastError: row.lastError,
     consecutiveFailures: row.consecutiveFailures,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function serializeProfileBackfill(
+  row: ProfileBackfillRow,
+): ProfileBackfill {
+  return {
+    id: row.id,
+    automaticProfileId: row.automaticProfileId,
+    status: row.status,
+    pageNumber: row.pageNumber,
+    itemsDiscovered: row.itemsDiscovered,
+    collectionsQueued: row.collectionsQueued,
+    lastError: row.lastError,
+    startedAt: row.startedAt?.toISOString() ?? null,
+    completedAt: row.completedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

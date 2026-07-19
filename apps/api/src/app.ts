@@ -12,14 +12,17 @@ import { createDatabase } from '@media-scraper/database';
 import {
   AUTOMATIC_PROFILE_QUEUE_NAME,
   COLLECTION_QUEUE_NAME,
+  PROFILE_BACKFILL_QUEUE_NAME,
   type AutomaticProfileJobPayload,
   type CollectionJobPayload,
+  type ProfileBackfillJobPayload,
 } from '@media-scraper/shared';
 import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
 import { automaticProfileRoutes } from './routes/automatic-profiles.js';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
+import { profileArchiveRoutes } from './routes/profile-archives.js';
 import { profileRoutes } from './routes/profiles.js';
 import { registerAuthentication } from './auth.js';
 
@@ -85,9 +88,16 @@ export async function buildApp(config: ApiConfig) {
     AUTOMATIC_PROFILE_QUEUE_NAME,
     { connection: redis },
   );
+  const profileBackfillQueue = new Queue<ProfileBackfillJobPayload>(
+    PROFILE_BACKFILL_QUEUE_NAME,
+    { connection: redis },
+  );
   queue.on('error', (error) => app.log.error(error, 'Collection queue error'));
   automaticProfileQueue.on('error', (error) =>
     app.log.error(error, 'Automatic profile queue error'),
+  );
+  profileBackfillQueue.on('error', (error) =>
+    app.log.error(error, 'Profile archive queue error'),
   );
 
   app.setErrorHandler<ApiError>((error, request, reply) => {
@@ -137,6 +147,12 @@ export async function buildApp(config: ApiConfig) {
     db: database.db,
     queue: automaticProfileQueue,
   });
+  await app.register(profileArchiveRoutes, {
+    prefix: '/profile-archives',
+    automaticProfileQueue,
+    db: database.db,
+    profileBackfillQueue,
+  });
   await app.register(profileRoutes, {
     prefix: '/profiles',
     cacheTtlSeconds: config.profileDiscoveryCacheTtlSeconds,
@@ -163,7 +179,11 @@ export async function buildApp(config: ApiConfig) {
     }
   });
   app.addHook('onClose', async () => {
-    await Promise.all([queue.close(), automaticProfileQueue.close()]);
+    await Promise.all([
+      queue.close(),
+      automaticProfileQueue.close(),
+      profileBackfillQueue.close(),
+    ]);
     await redis.quit();
     await database.close();
     storage.close();

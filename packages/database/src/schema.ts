@@ -19,6 +19,7 @@ import {
   MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MEDIA_MAINTENANCE_TYPES,
   MEDIA_TYPES,
+  PROFILE_BACKFILL_STATUSES,
   MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   SUPPORTED_PLATFORMS,
 } from '@media-scraper/shared';
@@ -33,6 +34,10 @@ export const collectionOriginEnum = pgEnum(
   COLLECTION_ORIGINS,
 );
 export const mediaTypeEnum = pgEnum('media_type', MEDIA_TYPES);
+export const profileBackfillStatusEnum = pgEnum(
+  'profile_backfill_status',
+  PROFILE_BACKFILL_STATUSES,
+);
 export const mediaMaintenanceTypeEnum = pgEnum(
   'media_maintenance_type',
   MEDIA_MAINTENANCE_TYPES,
@@ -70,6 +75,36 @@ export const automaticProfiles = pgTable(
       table.username,
     ),
     index('automatic_profiles_enabled_idx').on(table.enabled),
+  ],
+);
+
+export const profileBackfills = pgTable(
+  'profile_backfills',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    automaticProfileId: uuid('automatic_profile_id')
+      .notNull()
+      .references(() => automaticProfiles.id, { onDelete: 'cascade' }),
+    status: profileBackfillStatusEnum('status').notNull().default('queued'),
+    cursor: text('cursor'),
+    pageNumber: integer('page_number').notNull().default(0),
+    itemsDiscovered: integer('items_discovered').notNull().default(0),
+    collectionsQueued: integer('collections_queued').notNull().default(0),
+    lastError: text('last_error'),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('profile_backfills_automatic_profile_idx').on(
+      table.automaticProfileId,
+    ),
+    index('profile_backfills_status_idx').on(table.status),
   ],
 );
 

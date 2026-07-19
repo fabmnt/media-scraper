@@ -1,24 +1,13 @@
-import { randomUUID } from 'node:crypto';
-import { access } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { Queue } from 'bullmq';
-import { and, eq, inArray, or } from 'drizzle-orm';
-import {
-  automaticProfiles,
-  collections,
-  mediaItems,
-  type Database,
-} from '@media-scraper/database';
+import { eq } from 'drizzle-orm';
+import { automaticProfiles, type Database } from '@media-scraper/database';
 import { discoverProfileMedia } from '@media-scraper/extractors';
 import {
   MAX_PROFILE_MEDIA,
-  PLATFORM_CREDENTIALS,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
-import {
-  ensureCollectionQueued,
-  type QueuedCollection,
-} from './collection-queue.js';
+import { queueDiscoveredProfileMedia } from './profile-collection-queue.js';
+import { profileCredentialPath } from './profile-credentials.js';
 
 const MAX_ERROR_LENGTH = 4_000;
 const MILLISECONDS_PER_MINUTE = 60_000;
@@ -30,48 +19,6 @@ interface AutomaticProfileOptions {
   db: Database;
   force?: boolean;
   signal: AbortSignal;
-}
-
-async function credentialPath(
-  credentialsRoot: string,
-  platform: keyof typeof PLATFORM_CREDENTIALS,
-) {
-  const path = join(credentialsRoot, PLATFORM_CREDENTIALS[platform].fileName);
-  return access(path)
-    .then(() => path)
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return undefined;
-      throw error;
-    });
-}
-
-async function queueCollections(
-  collectionQueue: Queue<CollectionJobPayload>,
-  pendingCollections: QueuedCollection[],
-  db: Database,
-) {
-  const results = await Promise.allSettled(
-    pendingCollections.map((collection) =>
-      ensureCollectionQueued(collectionQueue, collection),
-    ),
-  );
-  const failedIds = results.flatMap((result, index) => {
-    const collection = pendingCollections[index];
-    return result.status === 'rejected' && collection ? [collection.id] : [];
-  });
-  if (failedIds.length === 0) return;
-
-  await db
-    .update(collections)
-    .set({
-      status: 'failed',
-      errorMessage: 'Automatic collection could not be queued',
-      updatedAt: new Date(),
-    })
-    .where(inArray(collections.id, failedIds));
-  throw new Error(
-    `${String(failedIds.length)} automatic collection jobs could not be queued`,
-  );
 }
 
 export async function processAutomaticProfile(
@@ -96,7 +43,10 @@ export async function processAutomaticProfile(
   }
 
   try {
-    const cookiesPath = await credentialPath(credentialsRoot, profile.platform);
+    const cookiesPath = await profileCredentialPath(
+      credentialsRoot,
+      profile.platform,
+    );
     const result = await discoverProfileMedia(
       { platform: profile.platform, username: profile.username },
       cookiesPath,
@@ -105,93 +55,14 @@ export async function processAutomaticProfile(
       { includeStories: profile.includeStories },
     );
     signal.throwIfAborted();
-
-    const sourceIds = result.items.map((item) => item.id);
-    const sourceUrls = result.items.map((item) => item.sourceUrl);
-    const [collectedRows, collectionRows] =
-      sourceIds.length === 0
-        ? [[], []]
-        : await Promise.all([
-            db
-              .select({ sourceId: mediaItems.sourceId })
-              .from(mediaItems)
-              .where(
-                and(
-                  eq(mediaItems.platform, profile.platform),
-                  inArray(mediaItems.sourceId, sourceIds),
-                ),
-              ),
-            db
-              .select({
-                id: collections.id,
-                origin: collections.origin,
-                platform: collections.platform,
-                sourceId: collections.discoveredSourceId,
-                sourceUrl: collections.sourceUrl,
-                status: collections.status,
-              })
-              .from(collections)
-              .where(
-                and(
-                  eq(collections.platform, profile.platform),
-                  or(
-                    inArray(collections.discoveredSourceId, sourceIds),
-                    inArray(collections.sourceUrl, sourceUrls),
-                  ),
-                ),
-              ),
-          ]);
-    const failedAutomaticCollections = collectionRows.filter(
-      (collection) =>
-        collection.origin === 'automatic' && collection.status === 'failed',
+    const queuedCollections = await queueDiscoveredProfileMedia(
+      profile,
+      result.items,
+      {
+        collectionQueue,
+        db,
+      },
     );
-    if (failedAutomaticCollections.length > 0) {
-      await db
-        .update(collections)
-        .set({ status: 'queued', errorMessage: null, updatedAt: new Date() })
-        .where(
-          inArray(
-            collections.id,
-            failedAutomaticCollections.map((collection) => collection.id),
-          ),
-        );
-      await queueCollections(collectionQueue, failedAutomaticCollections, db);
-    }
-    const knownSourceIds = new Set([
-      ...collectedRows.map((item) => item.sourceId),
-      ...collectionRows.flatMap((item) =>
-        item.sourceId ? [item.sourceId] : [],
-      ),
-    ]);
-    const knownSourceUrls = new Set(
-      collectionRows.map((item) => item.sourceUrl),
-    );
-    const pendingValues = result.items
-      .filter(
-        (item) =>
-          !knownSourceIds.has(item.id) && !knownSourceUrls.has(item.sourceUrl),
-      )
-      .map((item) => ({
-        id: randomUUID(),
-        automaticProfileId: profile.id,
-        discoveredSourceId: item.id,
-        origin: 'automatic' as const,
-        platform: profile.platform,
-        sourceUrl: item.sourceUrl,
-      }));
-    const pendingCollections =
-      pendingValues.length === 0
-        ? []
-        : await db
-            .insert(collections)
-            .values(pendingValues)
-            .onConflictDoNothing()
-            .returning({
-              id: collections.id,
-              platform: collections.platform,
-              sourceUrl: collections.sourceUrl,
-            });
-    await queueCollections(collectionQueue, pendingCollections, db);
 
     const checkedAt = new Date();
     await db
@@ -209,10 +80,7 @@ export async function processAutomaticProfile(
         updatedAt: checkedAt,
       })
       .where(eq(automaticProfiles.id, profile.id));
-    return {
-      queuedCollections:
-        failedAutomaticCollections.length + pendingCollections.length,
-    };
+    return { queuedCollections };
   } catch (error) {
     if (signal.aborted) throw error;
 
