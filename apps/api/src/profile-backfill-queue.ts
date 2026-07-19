@@ -12,7 +12,7 @@ export async function queueProfileBackfill(
   backfillId: string,
   pageNumber = 0,
 ) {
-  const jobId = `${backfillId}:${String(pageNumber)}`;
+  const jobId = `${backfillId}_${String(pageNumber)}`;
   const existingJob = await queue.getJob(jobId);
   if (existingJob) {
     const state = await existingJob.getState();

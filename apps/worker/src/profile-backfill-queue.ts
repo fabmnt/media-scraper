@@ -6,7 +6,7 @@ import {
 } from '@media-scraper/shared';
 
 function profileBackfillJobId(backfillId: string, pageNumber: number) {
-  return `${backfillId}:${String(pageNumber)}`;
+  return `${backfillId}_${String(pageNumber)}`;
 }
 
 export async function ensureProfileBackfillQueued(

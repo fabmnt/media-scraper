@@ -137,6 +137,7 @@ export async function automaticProfileRoutes(
       .returning();
     if (!profile) throw new Error('Automatic profile was not updated');
 
+    let scheduledProfile: typeof automaticProfiles.$inferSelect | undefined;
     try {
       const nextCheckAt = profile.enabled
         ? await upsertAutomaticProfileScheduler(queue, profile)
@@ -144,39 +145,47 @@ export async function automaticProfileRoutes(
       if (!profile.enabled) {
         await removeAutomaticProfileScheduler(queue, profile.id);
       }
-      if (input.enabled === true) {
-        const [backfill] = await db
-          .select({
-            id: profileBackfills.id,
-            pageNumber: profileBackfills.pageNumber,
-          })
-          .from(profileBackfills)
-          .where(
-            and(
-              eq(profileBackfills.automaticProfileId, profile.id),
-              inArray(profileBackfills.status, ['queued', 'processing']),
-            ),
-          );
-        if (backfill) {
-          await queueProfileBackfill(
-            profileBackfillQueue,
-            backfill.id,
-            backfill.pageNumber,
-          );
-        }
-      }
-      const [scheduledProfile] = await db
+      [scheduledProfile] = await db
         .update(automaticProfiles)
         .set({ nextCheckAt, updatedAt: new Date() })
         .where(eq(automaticProfiles.id, profile.id))
         .returning();
-      return serializeAutomaticProfile(scheduledProfile ?? profile);
     } catch (error) {
       request.log.error(error, 'Could not update automatic profile schedule');
       throw new AutomaticProfileQueueError(
         'Automatic collection settings were saved but the schedule could not be updated',
       );
     }
+
+    if (input.enabled === true) {
+      const [backfill] = await db
+        .select({
+          id: profileBackfills.id,
+          pageNumber: profileBackfills.pageNumber,
+        })
+        .from(profileBackfills)
+        .where(
+          and(
+            eq(profileBackfills.automaticProfileId, profile.id),
+            inArray(profileBackfills.status, ['queued', 'processing']),
+          ),
+        );
+      if (backfill) {
+        try {
+          await queueProfileBackfill(
+            profileBackfillQueue,
+            backfill.id,
+            backfill.pageNumber,
+          );
+        } catch (error) {
+          request.log.error(error, 'Could not resume profile archive');
+          throw new AutomaticProfileQueueError(
+            'Automatic collection was resumed but the profile archive could not be queued',
+          );
+        }
+      }
+    }
+    return serializeAutomaticProfile(scheduledProfile ?? profile);
   });
 
   app.delete('/:id', async (request, reply) => {
