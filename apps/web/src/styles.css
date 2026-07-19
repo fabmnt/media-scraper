@@ -784,7 +784,8 @@ button:disabled {
     border-color 160ms ease,
     transform 160ms ease;
 }
-.media-card:hover {
+.media-card:hover,
+.media-card.selected {
   border-color: var(--accent);
   transform: translateY(-2px);
 }
@@ -807,10 +808,28 @@ button:disabled {
   color: #111310;
   background: var(--accent);
 }
+.media-selection-control {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgb(17 19 16 / 82%);
+}
+.media-selection-control input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .asset-count {
   position: absolute;
   top: 8px;
-  right: 8px;
+  right: 34px;
   padding: 5px 7px;
   color: #ebece5;
   background: rgb(17 19 16 / 82%);
@@ -898,6 +917,41 @@ button:disabled {
 .card-actions a:hover,
 .card-actions button:hover {
   color: var(--accent);
+}
+.preview-button {
+  flex: 0 0 32px !important;
+  justify-content: center;
+}
+.preview-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+}
+.media-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin: -14px 0 30px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font:
+    500 10px 'DM Mono',
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.media-selection-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.media-selection-toolbar .danger-button {
+  padding: 8px 12px;
+  font-size: 10px;
 }
 .load-more-button {
   display: block;
@@ -1253,6 +1307,15 @@ button:disabled {
     flex-direction: column;
   }
   .profile-selection-toolbar > div {
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .media-selection-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .media-selection-toolbar > div {
     justify-content: space-between;
     gap: 10px;
   }

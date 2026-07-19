@@ -1,24 +1,32 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
+const VIDEO_PRELOAD_ROOT_MARGIN = '200px';
 
 export function MediaCard({
-  item,
   deleteDisabled,
   isDeleting,
-  previewOpen,
+  isSelected,
+  item,
   onDelete,
   onPreview,
+  onSelect,
+  previewOpen,
 }: {
   deleteDisabled: boolean;
-  item: MediaItem;
   isDeleting: boolean;
-  previewOpen: boolean;
+  isSelected: boolean;
+  item: MediaItem;
   onDelete: () => void;
   onPreview: () => void;
+  onSelect: () => void;
+  previewOpen: boolean;
 }) {
+  const cardRef = useRef<HTMLElement>(null);
+  const isVideoVisible = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
@@ -29,8 +37,35 @@ export function MediaCard({
   }, [assetIndex, item.assets.length]);
 
   useEffect(() => {
-    if (previewOpen) videoRef.current?.pause();
+    const video = videoRef.current;
+    if (!video) return;
+    if (previewOpen) {
+      video.pause();
+    } else if (isVideoVisible.current) {
+      void video.play().catch(() => undefined);
+    }
   }, [previewOpen]);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const video = videoRef.current;
+    if (!card || !video) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        isVideoVisible.current = entry.isIntersecting;
+        if (entry.isIntersecting && !previewOpen) {
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
+      },
+      { rootMargin: VIDEO_PRELOAD_ROOT_MARGIN },
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [previewOpen, selectedAsset?.id]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -39,9 +74,48 @@ export function MediaCard({
     );
   }
 
+  const { consumeSwipe, handleTouchEnd, handleTouchStart } = useHorizontalSwipe(
+    {
+      onSwipeLeft: () => selectAdjacentAsset(1),
+      onSwipeRight: () => selectAdjacentAsset(-1),
+    },
+  );
+
   return (
-    <article className="media-card">
-      <div className="preview">
+    <article
+      aria-label={`Open media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
+      ref={cardRef}
+      className={`media-card${isSelected ? ' selected' : ''}`}
+      onClick={() => {
+        if (consumeSwipe()) return;
+        onPreview();
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.target !== event.currentTarget ||
+          (event.key !== 'Enter' && event.key !== ' ')
+        ) {
+          return;
+        }
+        event.preventDefault();
+        onPreview();
+      }}
+      tabIndex={0}
+    >
+      <div
+        className="preview"
+        onTouchEnd={(event) => {
+          const touch = event.changedTouches[0];
+          if (selectedAsset?.type === 'image') {
+            handleTouchEnd(touch);
+          }
+        }}
+        onTouchStart={(event) => {
+          if (selectedAsset?.type === 'image') {
+            handleTouchStart(event.touches[0]);
+          }
+        }}
+      >
         {selectedAsset?.type === 'image' ? (
           <img
             alt={item.caption ?? `${item.platform} media`}
@@ -50,8 +124,13 @@ export function MediaCard({
           />
         ) : selectedAsset ? (
           <video
+            autoPlay
             controls
             key={selectedAsset.id}
+            onClick={(event) => event.stopPropagation()}
+            loop
+            muted
+            playsInline
             preload="metadata"
             ref={videoRef}
             src={api.mediaUrl(selectedAsset.url)}
@@ -60,6 +139,13 @@ export function MediaCard({
           <div className="empty-preview">No preview</div>
         )}
         <span className="platform">{item.platform}</span>
+        <label
+          aria-label={`Select media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
+          className="media-selection-control"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <input checked={isSelected} onChange={onSelect} type="checkbox" />
+        </label>
         {hasMultipleAssets && (
           <>
             <span className="asset-count">
@@ -68,7 +154,10 @@ export function MediaCard({
             <button
               aria-label="Previous asset"
               className="carousel-control carousel-previous"
-              onClick={() => selectAdjacentAsset(-1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                selectAdjacentAsset(-1);
+              }}
               type="button"
             >
               ‹
@@ -76,7 +165,10 @@ export function MediaCard({
             <button
               aria-label="Next asset"
               className="carousel-control carousel-next"
-              onClick={() => selectAdjacentAsset(1)}
+              onClick={(event) => {
+                event.stopPropagation();
+                selectAdjacentAsset(1);
+              }}
               type="button"
             >
               ›
@@ -92,13 +184,21 @@ export function MediaCard({
           <span>{new Date(item.collectedAt).toLocaleDateString()}</span>
         </div>
         <p>{item.caption ?? 'No caption available'}</p>
-        <div className="card-actions">
+        <div
+          className="card-actions"
+          onClick={(event) => event.stopPropagation()}
+        >
           <button
             aria-label={`Preview media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
+            className="preview-button"
             onClick={onPreview}
+            title="Preview"
             type="button"
           >
-            Preview
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+              <circle cx="12" cy="12" r="2.5" />
+            </svg>
           </button>
           <a href={item.sourceUrl} rel="noreferrer" target="_blank">
             Source ↗

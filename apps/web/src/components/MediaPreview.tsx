@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 export function MediaPreview({
   initialItemId,
@@ -52,6 +53,11 @@ export function MediaPreview({
     dialogRef.current?.close();
     onClose();
   }, [onClose]);
+
+  const { handleTouchEnd, handleTouchStart } = useHorizontalSwipe({
+    onSwipeLeft: showNext,
+    onSwipeRight: showPrevious,
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -130,6 +136,12 @@ export function MediaPreview({
           {asset?.type === 'image' ? (
             <img
               alt={item.caption ?? `${item.platform} media`}
+              onTouchEnd={(event) => {
+                handleTouchEnd(event.changedTouches[0]);
+              }}
+              onTouchStart={(event) => {
+                handleTouchStart(event.touches[0]);
+              }}
               src={api.mediaUrl(asset.url)}
             />
           ) : asset ? (

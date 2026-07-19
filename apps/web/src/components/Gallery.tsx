@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  MEDIA_GROUP_MODES,
   MEDIA_LIBRARY_PAGE_SIZE,
+  MEDIA_SORT_OPTIONS,
   SUPPORTED_PLATFORMS,
   type MediaGroupMode,
   type MediaItem,
@@ -15,6 +17,20 @@ import { MediaCard } from './MediaCard';
 import { MediaPreview } from './MediaPreview';
 
 const SEARCH_DEBOUNCE_MS = 350;
+const GALLERY_QUERY_PARAMETER = {
+  groupMode: 'groupBy',
+  platform: 'platform',
+  search: 'search',
+  sortBy: 'sortBy',
+} as const;
+
+interface GalleryFilters {
+  groupMode: MediaGroupMode;
+  platform: Platform | undefined;
+  search: string;
+  sortBy: MediaSort;
+}
+
 interface LoadedGroupPage {
   items: MediaItem[];
   nextOffset: number | null;
@@ -28,17 +44,38 @@ interface LoadedGroupPages {
   requestKey: string;
 }
 
+function filtersFromUrl(): GalleryFilters {
+  const searchParameters = new URLSearchParams(window.location.search);
+  const platform = SUPPORTED_PLATFORMS.find(
+    (item) => item === searchParameters.get(GALLERY_QUERY_PARAMETER.platform),
+  );
+  const groupMode = MEDIA_GROUP_MODES.find(
+    (item) => item === searchParameters.get(GALLERY_QUERY_PARAMETER.groupMode),
+  );
+  const sortBy = MEDIA_SORT_OPTIONS.find(
+    (item) => item === searchParameters.get(GALLERY_QUERY_PARAMETER.sortBy),
+  );
+
+  return {
+    groupMode: groupMode ?? 'none',
+    platform,
+    search: searchParameters.get(GALLERY_QUERY_PARAMETER.search) ?? '',
+    sortBy: sortBy ?? 'collectedAt',
+  };
+}
+
 export function Gallery() {
-  const [platform, setPlatform] = useState<Platform | undefined>();
-  const [groupMode, setGroupMode] = useState<MediaGroupMode>('none');
+  const [filters, setFilters] = useState(filtersFromUrl);
+  const { groupMode, platform, search, sortBy } = filters;
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
-  const [sortBy, setSortBy] = useState<MediaSort>('collectedAt');
   const [previewItemId, setPreviewItemId] = useState<string>();
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState<string>();
+  const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
   const [loadedPages, setLoadedPages] = useState<LoadedGroupPages>();
+  const shouldPushFilterHistory = useRef(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -49,6 +86,51 @@ export function Gallery() {
     return () => window.clearTimeout(timeout);
   }, [search]);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const searchValue = search.trim();
+    if (platform) {
+      url.searchParams.set(GALLERY_QUERY_PARAMETER.platform, platform);
+    } else {
+      url.searchParams.delete(GALLERY_QUERY_PARAMETER.platform);
+    }
+    if (groupMode !== 'none') {
+      url.searchParams.set(GALLERY_QUERY_PARAMETER.groupMode, groupMode);
+    } else {
+      url.searchParams.delete(GALLERY_QUERY_PARAMETER.groupMode);
+    }
+    if (sortBy !== 'collectedAt') {
+      url.searchParams.set(GALLERY_QUERY_PARAMETER.sortBy, sortBy);
+    } else {
+      url.searchParams.delete(GALLERY_QUERY_PARAMETER.sortBy);
+    }
+    if (searchValue) {
+      url.searchParams.set(GALLERY_QUERY_PARAMETER.search, searchValue);
+    } else {
+      url.searchParams.delete(GALLERY_QUERY_PARAMETER.search);
+    }
+    const historyUpdate = shouldPushFilterHistory.current
+      ? 'pushState'
+      : 'replaceState';
+    window.history[historyUpdate](
+      null,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    shouldPushFilterHistory.current = false;
+  }, [groupMode, platform, search, sortBy]);
+
+  useEffect(() => {
+    const syncFiltersWithUrl = () => setFilters(filtersFromUrl());
+    window.addEventListener('popstate', syncFiltersWithUrl);
+    return () => window.removeEventListener('popstate', syncFiltersWithUrl);
+  }, []);
+
+  function updateFilters(updates: Partial<GalleryFilters>) {
+    shouldPushFilterHistory.current = true;
+    setFilters((current) => ({ ...current, ...updates }));
+  }
+
   const effectiveGroupMode = debouncedSearch ? 'none' : groupMode;
   const requestKey = JSON.stringify([
     effectiveGroupMode,
@@ -56,6 +138,10 @@ export function Gallery() {
     debouncedSearch,
     sortBy,
   ]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [requestKey]);
   const media = useQuery({
     queryKey: queryKeys.media(
       effectiveGroupMode,
@@ -188,16 +274,55 @@ export function Gallery() {
     },
   });
   const remove = useMutation({
-    mutationFn: api.deleteMedia,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.allMedia });
+    mutationFn: (ids: string[]) => Promise.allSettled(ids.map(api.deleteMedia)),
+    onMutate: () => setDeleteError(undefined),
+    onSuccess: (results, ids) => {
+      const successfulIds = ids.filter(
+        (_, index) => results[index]?.status === 'fulfilled',
+      );
+      const failedIds = ids.filter(
+        (_, index) => results[index]?.status === 'rejected',
+      );
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const id of successfulIds) next.delete(id);
+        return next;
+      });
+      if (failedIds.length > 0) {
+        setDeleteError(`Could not delete media: ${failedIds.join(', ')}`);
+      }
     },
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.allMedia }),
   });
 
   function deleteItem(item: MediaItem) {
     if (window.confirm('Delete this item and its downloaded files?')) {
-      remove.mutate(item.id);
+      remove.mutate([item.id]);
     }
+  }
+
+  function deleteSelectedItems() {
+    const selectedItemIds = items
+      .filter((item) => selectedIds.has(item.id))
+      .map((item) => item.id);
+    if (
+      selectedItemIds.length > 0 &&
+      window.confirm(
+        `Delete ${selectedItemIds.length} selected item${selectedItemIds.length === 1 ? '' : 's'} and their downloaded files?`,
+      )
+    ) {
+      remove.mutate(selectedItemIds);
+    }
+  }
+
+  function toggleItemSelection(itemId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
   }
 
   function loadGroup(group: MediaItemGroup) {
@@ -246,6 +371,12 @@ export function Gallery() {
     ? currentLoadedPages.nextGroupOffset
     : (media.data?.nextGroupOffset ?? null);
   const items = groups.flatMap((group) => group.items);
+  const selectedItemCount = items.filter((item) =>
+    selectedIds.has(item.id),
+  ).length;
+  const errorMessage =
+    (media.error ?? remove.error ?? loadMore.error ?? loadMoreGroups.error)
+      ?.message ?? deleteError;
 
   return (
     <>
@@ -262,7 +393,7 @@ export function Gallery() {
         <div className="library-toolbar">
           <input
             aria-label="Search media"
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => updateFilters({ search: event.target.value })}
             placeholder="Search usernames or captions"
             type="search"
             value={search}
@@ -270,9 +401,10 @@ export function Gallery() {
           <select
             aria-label="Filter platform"
             onChange={(event) =>
-              setPlatform(
-                (event.target.value || undefined) as Platform | undefined,
-              )
+              updateFilters({
+                platform: (event.target.value || undefined) as
+                  Platform | undefined,
+              })
             }
             value={platform ?? ''}
           >
@@ -285,7 +417,9 @@ export function Gallery() {
           </select>
           <select
             aria-label="Sort media"
-            onChange={(event) => setSortBy(event.target.value as MediaSort)}
+            onChange={(event) =>
+              updateFilters({ sortBy: event.target.value as MediaSort })
+            }
             value={sortBy}
           >
             <option value="collectedAt">Newest collected</option>
@@ -294,7 +428,7 @@ export function Gallery() {
           <select
             aria-label="Group media"
             onChange={(event) =>
-              setGroupMode(event.target.value as MediaGroupMode)
+              updateFilters({ groupMode: event.target.value as MediaGroupMode })
             }
             value={groupMode}
           >
@@ -303,24 +437,43 @@ export function Gallery() {
             <option value="platform">Group by platform</option>
           </select>
         </div>
+        <div className="media-selection-toolbar">
+          <span>
+            {selectedItemCount} selected / {items.length} loaded
+          </span>
+          <div>
+            <button
+              className="text-button"
+              disabled={items.length === 0}
+              onClick={() =>
+                setSelectedIds(new Set(items.map((item) => item.id)))
+              }
+              type="button"
+            >
+              Select all loaded
+            </button>
+            <button
+              className="text-button"
+              disabled={selectedItemCount === 0}
+              onClick={() => setSelectedIds(new Set())}
+              type="button"
+            >
+              Clear selection
+            </button>
+            <button
+              className="danger-button"
+              disabled={remove.isPending || selectedItemCount === 0}
+              onClick={deleteSelectedItems}
+              type="button"
+            >
+              Delete selected
+            </button>
+          </div>
+        </div>
         {media.isLoading && (
           <p className="empty-state">Loading your library…</p>
         )}
-        {(media.error ||
-          remove.error ||
-          loadMore.error ||
-          loadMoreGroups.error) && (
-          <p className="error">
-            {
-              (
-                media.error ??
-                remove.error ??
-                loadMore.error ??
-                loadMoreGroups.error
-              )?.message
-            }
-          </p>
-        )}
+        {errorMessage && <p className="error">{errorMessage}</p>}
         {!media.isLoading && items.length === 0 && (
           <p className="empty-state">Your collected media will appear here.</p>
         )}
@@ -367,12 +520,15 @@ export function Gallery() {
                       <MediaCard
                         deleteDisabled={remove.isPending}
                         isDeleting={
-                          remove.isPending && remove.variables === item.id
+                          remove.isPending &&
+                          Boolean(remove.variables?.includes(item.id))
                         }
+                        isSelected={selectedIds.has(item.id)}
                         item={item}
                         key={item.id}
                         onDelete={() => deleteItem(item)}
                         onPreview={() => setPreviewItemId(item.id)}
+                        onSelect={() => toggleItemSelection(item.id)}
                         previewOpen={Boolean(previewItemId)}
                       />
                     ))}

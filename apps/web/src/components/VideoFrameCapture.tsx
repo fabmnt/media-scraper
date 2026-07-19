@@ -159,6 +159,9 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
         aria-label="Video preview"
         autoPlay
         controls
+        loop
+        muted
+        playsInline
         onLoadedMetadata={(event) => {
           const videoDuration = event.currentTarget.duration;
           setDuration(Number.isFinite(videoDuration) ? videoDuration : 0);
