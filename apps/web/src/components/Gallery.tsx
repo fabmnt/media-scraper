@@ -72,6 +72,7 @@ export function Gallery() {
   >({});
   const [previewItemId, setPreviewItemId] = useState<string>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteError, setDeleteError] = useState<string>();
   const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
   const [loadedPages, setLoadedPages] = useState<LoadedGroupPages>();
   const queryClient = useQueryClient();
@@ -267,13 +268,23 @@ export function Gallery() {
     },
   });
   const remove = useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map(api.deleteMedia)),
-    onSuccess: (_, ids) => {
+    mutationFn: (ids: string[]) => Promise.allSettled(ids.map(api.deleteMedia)),
+    onMutate: () => setDeleteError(undefined),
+    onSuccess: (results, ids) => {
+      const successfulIds = ids.filter(
+        (_, index) => results[index]?.status === 'fulfilled',
+      );
+      const failedIds = ids.filter(
+        (_, index) => results[index]?.status === 'rejected',
+      );
       setSelectedIds((current) => {
         const next = new Set(current);
-        for (const id of ids) next.delete(id);
+        for (const id of successfulIds) next.delete(id);
         return next;
       });
+      if (failedIds.length > 0) {
+        setDeleteError(`Could not delete media: ${failedIds.join(', ')}`);
+      }
     },
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.allMedia }),
@@ -357,6 +368,9 @@ export function Gallery() {
   const selectedItemCount = items.filter((item) =>
     selectedIds.has(item.id),
   ).length;
+  const errorMessage =
+    (media.error ?? remove.error ?? loadMore.error ?? loadMoreGroups.error)
+      ?.message ?? deleteError;
 
   return (
     <>
@@ -453,21 +467,7 @@ export function Gallery() {
         {media.isLoading && (
           <p className="empty-state">Loading your library…</p>
         )}
-        {(media.error ||
-          remove.error ||
-          loadMore.error ||
-          loadMoreGroups.error) && (
-          <p className="error">
-            {
-              (
-                media.error ??
-                remove.error ??
-                loadMore.error ??
-                loadMoreGroups.error
-              )?.message
-            }
-          </p>
-        )}
+        {errorMessage && <p className="error">{errorMessage}</p>}
         {!media.isLoading && items.length === 0 && (
           <p className="empty-state">Your collected media will appear here.</p>
         )}

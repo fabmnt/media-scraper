@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
-
-const MIN_SWIPE_DISTANCE_PX = 50;
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 export function MediaPreview({
   initialItemId,
@@ -15,7 +14,6 @@ export function MediaPreview({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const swipeStartX = useRef<number | undefined>(undefined);
   const initialItemIndex = Math.max(
     items.findIndex((item) => item.id === initialItemId),
     0,
@@ -56,15 +54,10 @@ export function MediaPreview({
     onClose();
   }, [onClose]);
 
-  function handleSwipeEnd(touchX: number) {
-    if (swipeStartX.current === undefined) return;
-    const swipeDistance = touchX - swipeStartX.current;
-    swipeStartX.current = undefined;
-    if (Math.abs(swipeDistance) < MIN_SWIPE_DISTANCE_PX) return;
-
-    if (swipeDistance > 0) showPrevious();
-    else showNext();
-  }
+  const { handleTouchEnd, handleTouchStart } = useHorizontalSwipe({
+    onSwipeLeft: showNext,
+    onSwipeRight: showPrevious,
+  });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -144,11 +137,10 @@ export function MediaPreview({
             <img
               alt={item.caption ?? `${item.platform} media`}
               onTouchEnd={(event) => {
-                const touch = event.changedTouches[0];
-                if (touch) handleSwipeEnd(touch.clientX);
+                handleTouchEnd(event.changedTouches[0]?.clientX);
               }}
               onTouchStart={(event) => {
-                swipeStartX.current = event.touches[0]?.clientX;
+                handleTouchStart(event.touches[0]?.clientX);
               }}
               src={api.mediaUrl(asset.url)}
             />

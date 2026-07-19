@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
+import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
-const MIN_SWIPE_DISTANCE_PX = 50;
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
+const VIDEO_PRELOAD_ROOT_MARGIN = '200px';
 
 export function MediaCard({
   deleteDisabled,
@@ -24,9 +25,9 @@ export function MediaCard({
   onSelect: () => void;
   previewOpen: boolean;
 }) {
+  const cardRef = useRef<HTMLElement>(null);
+  const isVideoVisible = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const swipeStartX = useRef<number | undefined>(undefined);
-  const didSwipe = useRef(false);
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
@@ -36,8 +37,35 @@ export function MediaCard({
   }, [assetIndex, item.assets.length]);
 
   useEffect(() => {
-    if (previewOpen) videoRef.current?.pause();
+    const video = videoRef.current;
+    if (!video) return;
+    if (previewOpen) {
+      video.pause();
+    } else if (isVideoVisible.current) {
+      void video.play().catch(() => undefined);
+    }
   }, [previewOpen]);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const video = videoRef.current;
+    if (!card || !video) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        isVideoVisible.current = entry.isIntersecting;
+        if (entry.isIntersecting && !previewOpen) {
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
+      },
+      { rootMargin: VIDEO_PRELOAD_ROOT_MARGIN },
+    );
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [previewOpen, selectedAsset?.id]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -46,25 +74,20 @@ export function MediaCard({
     );
   }
 
-  function handleSwipeEnd(touchX: number) {
-    if (swipeStartX.current === undefined) return;
-    const swipeDistance = touchX - swipeStartX.current;
-    swipeStartX.current = undefined;
-    if (Math.abs(swipeDistance) < MIN_SWIPE_DISTANCE_PX) return;
-
-    didSwipe.current = true;
-    selectAdjacentAsset(swipeDistance > 0 ? -1 : 1);
-  }
+  const { consumeSwipe, handleTouchEnd, handleTouchStart } = useHorizontalSwipe(
+    {
+      onSwipeLeft: () => selectAdjacentAsset(1),
+      onSwipeRight: () => selectAdjacentAsset(-1),
+    },
+  );
 
   return (
     <article
       aria-label={`Open media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
+      ref={cardRef}
       className={`media-card${isSelected ? ' selected' : ''}`}
       onClick={() => {
-        if (didSwipe.current) {
-          didSwipe.current = false;
-          return;
-        }
+        if (consumeSwipe()) return;
         onPreview();
       }}
       onKeyDown={(event) => {
@@ -83,13 +106,13 @@ export function MediaCard({
         className="preview"
         onTouchEnd={(event) => {
           const touch = event.changedTouches[0];
-          if (selectedAsset?.type === 'image' && touch) {
-            handleSwipeEnd(touch.clientX);
+          if (selectedAsset?.type === 'image') {
+            handleTouchEnd(touch?.clientX);
           }
         }}
         onTouchStart={(event) => {
           if (selectedAsset?.type === 'image') {
-            swipeStartX.current = event.touches[0]?.clientX;
+            handleTouchStart(event.touches[0]?.clientX);
           }
         }}
       >
