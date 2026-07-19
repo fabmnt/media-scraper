@@ -3,6 +3,8 @@ import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
 
+const MIN_SWIPE_DISTANCE_PX = 50;
+
 export function MediaPreview({
   initialItemId,
   items,
@@ -13,6 +15,7 @@ export function MediaPreview({
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const swipeStartX = useRef<number | undefined>(undefined);
   const initialItemIndex = Math.max(
     items.findIndex((item) => item.id === initialItemId),
     0,
@@ -52,6 +55,16 @@ export function MediaPreview({
     dialogRef.current?.close();
     onClose();
   }, [onClose]);
+
+  function handleSwipeEnd(touchX: number) {
+    if (swipeStartX.current === undefined) return;
+    const swipeDistance = touchX - swipeStartX.current;
+    swipeStartX.current = undefined;
+    if (Math.abs(swipeDistance) < MIN_SWIPE_DISTANCE_PX) return;
+
+    if (swipeDistance > 0) showPrevious();
+    else showNext();
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -130,6 +143,12 @@ export function MediaPreview({
           {asset?.type === 'image' ? (
             <img
               alt={item.caption ?? `${item.platform} media`}
+              onTouchEnd={(event) =>
+                handleSwipeEnd(event.changedTouches[0]?.clientX ?? 0)
+              }
+              onTouchStart={(event) => {
+                swipeStartX.current = event.touches[0]?.clientX;
+              }}
               src={api.mediaUrl(asset.url)}
             />
           ) : asset ? (
