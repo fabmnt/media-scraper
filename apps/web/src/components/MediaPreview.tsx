@@ -137,10 +137,10 @@ export function MediaPreview({
             <img
               alt={item.caption ?? `${item.platform} media`}
               onTouchEnd={(event) => {
-                handleTouchEnd(event.changedTouches[0]?.clientX);
+                handleTouchEnd(event.changedTouches[0]);
               }}
               onTouchStart={(event) => {
-                handleTouchStart(event.touches[0]?.clientX);
+                handleTouchStart(event.touches[0]);
               }}
               src={api.mediaUrl(asset.url)}
             />

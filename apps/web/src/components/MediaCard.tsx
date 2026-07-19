@@ -107,12 +107,12 @@ export function MediaCard({
         onTouchEnd={(event) => {
           const touch = event.changedTouches[0];
           if (selectedAsset?.type === 'image') {
-            handleTouchEnd(touch?.clientX);
+            handleTouchEnd(touch);
           }
         }}
         onTouchStart={(event) => {
           if (selectedAsset?.type === 'image') {
-            handleTouchStart(event.touches[0]?.clientX);
+            handleTouchStart(event.touches[0]);
           }
         }}
       >

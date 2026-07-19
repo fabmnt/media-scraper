@@ -75,6 +75,7 @@ export function Gallery() {
   const [deleteError, setDeleteError] = useState<string>();
   const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
   const [loadedPages, setLoadedPages] = useState<LoadedGroupPages>();
+  const shouldPushFilterHistory = useRef(false);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -108,11 +109,15 @@ export function Gallery() {
     } else {
       url.searchParams.delete(GALLERY_QUERY_PARAMETER.search);
     }
-    window.history.replaceState(
+    const historyUpdate = shouldPushFilterHistory.current
+      ? 'pushState'
+      : 'replaceState';
+    window.history[historyUpdate](
       null,
       '',
       `${url.pathname}${url.search}${url.hash}`,
     );
+    shouldPushFilterHistory.current = false;
   }, [groupMode, platform, search, sortBy]);
 
   useEffect(() => {
@@ -122,6 +127,7 @@ export function Gallery() {
   }, []);
 
   function updateFilters(updates: Partial<GalleryFilters>) {
+    shouldPushFilterHistory.current = true;
     setFilters((current) => ({ ...current, ...updates }));
   }
 
