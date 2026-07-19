@@ -13,6 +13,7 @@ import {
 } from '@media-scraper/shared';
 import { queueDiscoveredProfileMedia } from './profile-collection-queue.js';
 import { profileCredentialPath } from './profile-credentials.js';
+import { waitForProfileDiscovery } from './profile-discovery-rate-limiter.js';
 import { ensureProfileBackfillQueued } from './profile-backfill-queue.js';
 
 const MAX_ERROR_LENGTH = 4_000;
@@ -22,6 +23,7 @@ interface ProfileBackfillOptions {
   credentialsRoot: string;
   db: Database;
   isFinalAttempt: boolean;
+  profileDiscoveryIntervalMs: number;
   queue: Queue<ProfileBackfillJobPayload>;
   signal: AbortSignal;
 }
@@ -33,6 +35,7 @@ export async function processProfileBackfill(
     credentialsRoot,
     db,
     isFinalAttempt,
+    profileDiscoveryIntervalMs,
     queue,
     signal,
   }: ProfileBackfillOptions,
@@ -83,6 +86,7 @@ export async function processProfileBackfill(
       credentialsRoot,
       profile.platform,
     );
+    await waitForProfileDiscovery(profileDiscoveryIntervalMs, signal);
     const result = await discoverProfileMedia(
       {
         platform: profile.platform,

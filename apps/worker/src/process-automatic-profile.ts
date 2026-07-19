@@ -8,6 +8,7 @@ import {
 } from '@media-scraper/shared';
 import { queueDiscoveredProfileMedia } from './profile-collection-queue.js';
 import { profileCredentialPath } from './profile-credentials.js';
+import { waitForProfileDiscovery } from './profile-discovery-rate-limiter.js';
 
 const MAX_ERROR_LENGTH = 4_000;
 const MILLISECONDS_PER_MINUTE = 60_000;
@@ -18,6 +19,7 @@ interface AutomaticProfileOptions {
   credentialsRoot: string;
   db: Database;
   force?: boolean;
+  profileDiscoveryIntervalMs: number;
   signal: AbortSignal;
 }
 
@@ -28,6 +30,7 @@ export async function processAutomaticProfile(
     credentialsRoot,
     db,
     force = false,
+    profileDiscoveryIntervalMs,
     signal,
   }: AutomaticProfileOptions,
 ) {
@@ -47,6 +50,7 @@ export async function processAutomaticProfile(
       credentialsRoot,
       profile.platform,
     );
+    await waitForProfileDiscovery(profileDiscoveryIntervalMs, signal);
     const result = await discoverProfileMedia(
       { platform: profile.platform, username: profile.username },
       cookiesPath,

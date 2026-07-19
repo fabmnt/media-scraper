@@ -117,14 +117,11 @@ const profileBackfillWorker = new Worker<ProfileBackfillJobPayload>(
       credentialsRoot: config.CREDENTIALS_ROOT,
       db: database.db,
       isFinalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
+      profileDiscoveryIntervalMs: PROFILE_CHECK_RATE_LIMIT_MS,
       queue: profileBackfillQueue,
       signal: shutdownController.signal,
     }),
-  {
-    connection: redis,
-    concurrency: 1,
-    limiter: { max: 1, duration: PROFILE_CHECK_RATE_LIMIT_MS },
-  },
+  { connection: redis, concurrency: 1 },
 );
 const automaticProfileWorker = new Worker<AutomaticProfileJobPayload>(
   AUTOMATIC_PROFILE_QUEUE_NAME,
@@ -134,13 +131,10 @@ const automaticProfileWorker = new Worker<AutomaticProfileJobPayload>(
       credentialsRoot: config.CREDENTIALS_ROOT,
       db: database.db,
       force: job.data.force ?? false,
+      profileDiscoveryIntervalMs: PROFILE_CHECK_RATE_LIMIT_MS,
       signal: shutdownController.signal,
     }),
-  {
-    connection: redis,
-    concurrency: 1,
-    limiter: { max: 1, duration: PROFILE_CHECK_RATE_LIMIT_MS },
-  },
+  { connection: redis, concurrency: 1 },
 );
 
 let maintenancePromise: Promise<void> | undefined;

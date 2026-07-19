@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   createProfileArchiveSchema,
   type AutomaticProfileJobPayload,
@@ -32,6 +33,8 @@ class ProfileArchiveConflictError extends Error {
 class ProfileArchiveQueueError extends Error {
   readonly statusCode = 503;
 }
+
+const profileArchiveParamsSchema = z.object({ id: z.uuid() });
 
 function isUniqueViolation(error: unknown) {
   return (
@@ -105,14 +108,21 @@ export async function profileArchiveRoutes(
       await queueProfileBackfill(profileBackfillQueue, created.backfill.id);
     } catch (error) {
       request.log.error(error, 'Could not queue profile archive');
-      await db
-        .update(profileBackfills)
-        .set({
-          status: 'failed',
-          lastError: 'Profile archive could not be queued',
-          updatedAt: new Date(),
-        })
-        .where(eq(profileBackfills.id, created.backfill.id));
+      try {
+        await db
+          .update(profileBackfills)
+          .set({
+            status: 'failed',
+            lastError: 'Profile archive could not be queued',
+            updatedAt: new Date(),
+          })
+          .where(eq(profileBackfills.id, created.backfill.id));
+      } catch (cleanupError) {
+        request.log.error(
+          cleanupError,
+          'Could not record profile archive failure',
+        );
+      }
       throw new ProfileArchiveQueueError('Profile archive could not be queued');
     }
 
@@ -120,5 +130,61 @@ export async function profileArchiveRoutes(
       profile: serializeAutomaticProfile(profile),
       backfill: serializeProfileBackfill(created.backfill),
     });
+  });
+
+  app.post('/:id/retry', async (request, reply): Promise<ProfileArchive> => {
+    const { id } = profileArchiveParamsSchema.parse(request.params);
+    const [backfill] = await db
+      .select()
+      .from(profileBackfills)
+      .where(eq(profileBackfills.id, id));
+    if (!backfill) {
+      const error = new Error('Profile archive not found');
+      Object.assign(error, { statusCode: 404 });
+      throw error;
+    }
+
+    const [profile] = await db
+      .select()
+      .from(automaticProfiles)
+      .where(eq(automaticProfiles.id, backfill.automaticProfileId));
+    if (!profile?.enabled) {
+      const error = new Error(
+        'Resume automatic collection before retrying this profile archive',
+      );
+      Object.assign(error, { statusCode: 409 });
+      throw error;
+    }
+
+    try {
+      const nextCheckAt = await upsertAutomaticProfileScheduler(
+        automaticProfileQueue,
+        profile,
+      );
+      const [scheduledProfile] = await db
+        .update(automaticProfiles)
+        .set({ nextCheckAt, updatedAt: new Date() })
+        .where(eq(automaticProfiles.id, profile.id))
+        .returning();
+      const [queuedBackfill] = await db
+        .update(profileBackfills)
+        .set({ status: 'queued', lastError: null, updatedAt: new Date() })
+        .where(eq(profileBackfills.id, backfill.id))
+        .returning();
+      await queueProfileBackfill(
+        profileBackfillQueue,
+        backfill.id,
+        backfill.pageNumber,
+      );
+      return reply.code(202).send({
+        profile: serializeAutomaticProfile(scheduledProfile ?? profile),
+        backfill: serializeProfileBackfill(queuedBackfill ?? backfill),
+      });
+    } catch (error) {
+      request.log.error(error, 'Could not retry profile archive');
+      throw new ProfileArchiveQueueError(
+        'Profile archive could not be retried',
+      );
+    }
   });
 }
