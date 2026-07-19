@@ -26,6 +26,10 @@ interface ProfileArchiveRoutesOptions {
   profileBackfillQueue: Queue<ProfileBackfillJobPayload>;
 }
 
+class ProfileArchiveNotFoundError extends Error {
+  readonly statusCode = 404;
+}
+
 class ProfileArchiveConflictError extends Error {
   readonly statusCode = 409;
 }
@@ -141,56 +145,76 @@ export async function profileArchiveRoutes(
       .from(automaticProfiles)
       .where(eq(automaticProfiles.id, id));
     if (!profile) {
-      const error = new Error('Profile archive not found');
-      Object.assign(error, { statusCode: 404 });
-      throw error;
+      throw new ProfileArchiveNotFoundError('Profile archive not found');
     }
     const [backfill] = await db
       .select()
       .from(profileBackfills)
       .where(eq(profileBackfills.automaticProfileId, profile.id));
     if (!backfill) {
-      const error = new Error('Profile archive not found');
-      Object.assign(error, { statusCode: 404 });
-      throw error;
+      throw new ProfileArchiveNotFoundError('Profile archive not found');
     }
     if (!profile.enabled) {
-      const error = new Error(
+      throw new ProfileArchiveConflictError(
         'Resume automatic collection before retrying this profile archive',
       );
-      Object.assign(error, { statusCode: 409 });
-      throw error;
     }
 
+    let scheduledProfile: typeof automaticProfiles.$inferSelect | undefined;
+    let queuedBackfill: typeof profileBackfills.$inferSelect | undefined;
     try {
       const nextCheckAt = await upsertAutomaticProfileScheduler(
         automaticProfileQueue,
         profile,
       );
-      const [scheduledProfile] = await db
+      [scheduledProfile] = await db
         .update(automaticProfiles)
         .set({ nextCheckAt, updatedAt: new Date() })
         .where(eq(automaticProfiles.id, profile.id))
         .returning();
-      const [queuedBackfill] = await db
+      [queuedBackfill] = await db
         .update(profileBackfills)
         .set({ status: 'queued', lastError: null, updatedAt: new Date() })
         .where(eq(profileBackfills.id, backfill.id))
         .returning();
+    } catch (error) {
+      request.log.error(error, 'Could not restore profile archive scheduling');
+      throw new ProfileArchiveQueueError(
+        'Profile archive could not be retried',
+      );
+    }
+
+    try {
       await queueProfileBackfill(
         profileBackfillQueue,
         backfill.id,
         backfill.pageNumber,
       );
-      return reply.code(202).send({
-        profile: serializeAutomaticProfile(scheduledProfile ?? profile),
-        backfill: serializeProfileBackfill(queuedBackfill ?? backfill),
-      });
     } catch (error) {
-      request.log.error(error, 'Could not retry profile archive');
+      request.log.error(error, 'Could not requeue profile archive');
+      try {
+        await db
+          .update(profileBackfills)
+          .set({
+            status: 'failed',
+            lastError: 'Profile archive could not be queued',
+            updatedAt: new Date(),
+          })
+          .where(eq(profileBackfills.id, backfill.id));
+      } catch (cleanupError) {
+        request.log.error(
+          cleanupError,
+          'Could not record profile archive failure',
+        );
+      }
       throw new ProfileArchiveQueueError(
         'Profile archive could not be retried',
       );
     }
+
+    return reply.code(202).send({
+      profile: serializeAutomaticProfile(scheduledProfile ?? profile),
+      backfill: serializeProfileBackfill(queuedBackfill ?? backfill),
+    });
   });
 }

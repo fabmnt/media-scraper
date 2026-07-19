@@ -1,3 +1,5 @@
+// This gate is shared by both profile queues in one worker process. Run one
+// worker replica when upstream profile-discovery pacing must be globally strict.
 let nextProfileDiscoveryAt = 0;
 let pendingProfileDiscovery = Promise.resolve();
 
