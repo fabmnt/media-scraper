@@ -22,6 +22,14 @@ export function MediaPreview({
   const [assetIndex, setAssetIndex] = useState(0);
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
+  const mediaSelectorItems = items.flatMap((mediaItem, mediaItemIndex) =>
+    mediaItem.assets.map((mediaAsset, mediaAssetIndex) => ({
+      asset: mediaAsset,
+      assetIndex: mediaAssetIndex,
+      item: mediaItem,
+      itemIndex: mediaItemIndex,
+    })),
+  );
   const platformLabel =
     item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
   const canGoPrevious = itemIndex > 0 || assetIndex > 0;
@@ -134,51 +142,107 @@ export function MediaPreview({
           </button>
         </header>
 
-        <div className="media-preview-stage">
-          {asset?.type === 'image' ? (
-            <img
-              alt={item.caption ?? `${platformLabel} media`}
-              onTouchEnd={(event) => {
-                handleTouchEnd(event.changedTouches[0]);
-              }}
-              onTouchStart={(event) => {
-                handleTouchStart(event.touches[0]);
-              }}
-              src={api.mediaUrl(asset.url)}
-            />
-          ) : asset ? (
-            <VideoFrameCapture
-              fileName={asset.fileName}
-              key={asset.id}
-              onTouchEnd={(event) => {
-                handleTouchEnd(event.changedTouches[0]);
-              }}
-              onTouchStart={(event) => {
-                handleTouchStart(event.touches[0]);
-              }}
-              src={api.mediaUrl(asset.url)}
-            />
-          ) : (
-            <p className="empty-state">No media file available.</p>
-          )}
-          <button
-            aria-label="Previous media file"
-            className="preview-navigation preview-navigation-previous"
-            disabled={!canGoPrevious}
-            onClick={showPrevious}
-            type="button"
-          >
-            ←
-          </button>
-          <button
-            aria-label="Next media file"
-            className="preview-navigation preview-navigation-next"
-            disabled={!canGoNext}
-            onClick={showNext}
-            type="button"
-          >
-            →
-          </button>
+        <div className="media-preview-content">
+          <div className="media-preview-stage">
+            {asset?.type === 'image' ? (
+              <img
+                alt={item.caption ?? `${platformLabel} media`}
+                onTouchEnd={(event) => {
+                  handleTouchEnd(event.changedTouches[0]);
+                }}
+                onTouchStart={(event) => {
+                  handleTouchStart(event.touches[0]);
+                }}
+                src={api.mediaUrl(asset.url)}
+              />
+            ) : asset ? (
+              <VideoFrameCapture
+                fileName={asset.fileName}
+                key={asset.id}
+                onTouchEnd={(event) => {
+                  handleTouchEnd(event.changedTouches[0]);
+                }}
+                onTouchStart={(event) => {
+                  handleTouchStart(event.touches[0]);
+                }}
+                src={api.mediaUrl(asset.url)}
+              />
+            ) : (
+              <p className="empty-state">No media file available.</p>
+            )}
+            <button
+              aria-label="Previous media file"
+              className="preview-navigation preview-navigation-previous"
+              disabled={!canGoPrevious}
+              onClick={showPrevious}
+              type="button"
+            >
+              ←
+            </button>
+            <button
+              aria-label="Next media file"
+              className="preview-navigation preview-navigation-next"
+              disabled={!canGoNext}
+              onClick={showNext}
+              type="button"
+            >
+              →
+            </button>
+          </div>
+
+          <aside aria-label="Media selector" className="media-selector">
+            <header className="media-selector-header">
+              <span>Media</span>
+              <span>{mediaSelectorItems.length}</span>
+            </header>
+            <div className="media-selector-list">
+              {mediaSelectorItems.map((selectorItem) => {
+                const isSelected =
+                  itemIndex === selectorItem.itemIndex &&
+                  assetIndex === selectorItem.assetIndex;
+                const selectorPlatformLabel =
+                  selectorItem.item.platform === 'manual'
+                    ? MANUAL_UPLOAD_LABEL
+                    : selectorItem.item.platform;
+
+                return (
+                  <button
+                    aria-current={isSelected ? 'true' : undefined}
+                    aria-label={`Show ${selectorItem.asset.type} ${selectorItem.assetIndex + 1} from ${selectorItem.item.authorName ?? 'Unknown creator'}`}
+                    className={`media-selector-item${isSelected ? ' selected' : ''}`}
+                    key={selectorItem.asset.id}
+                    onClick={() => {
+                      setItemIndex(selectorItem.itemIndex);
+                      setAssetIndex(selectorItem.assetIndex);
+                    }}
+                    type="button"
+                  >
+                    <span className="media-selector-thumbnail">
+                      {selectorItem.asset.type === 'image' ? (
+                        <img alt="" src={api.mediaUrl(selectorItem.asset.url)} />
+                      ) : (
+                        <video
+                          muted
+                          playsInline
+                          preload="metadata"
+                          src={api.mediaUrl(selectorItem.asset.url)}
+                        />
+                      )}
+                    </span>
+                    <span className="media-selector-details">
+                      <strong>
+                        {selectorItem.item.authorName ?? 'Unknown creator'}
+                      </strong>
+                      <span>
+                        {selectorPlatformLabel} · {selectorItem.asset.type}{' '}
+                        {selectorItem.assetIndex + 1}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
         </div>
 
         <div className="media-preview-footer">
