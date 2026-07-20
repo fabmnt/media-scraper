@@ -10,6 +10,7 @@ const AUTH_FAILURE_PATTERNS = [
   /redirect(?:ed)? to (?:the )?login page/i,
   /please log in to/i,
   /not logged in/i,
+  /cookies are no longer valid/i,
 ] as const;
 
 function errorMessages(error: unknown, seen: Set<unknown>): string[] {

@@ -391,13 +391,47 @@ export const CREDENTIAL_LOGIN_SESSION_STATUSES = [
 export const credentialLoginSessionSchema = z.object({
   id: z.uuid(),
   platform: platformSchema,
-  liveUrl: z.url(),
   expiresAt: z.iso.datetime(),
 });
 
 export const credentialLoginSessionStateSchema = z.object({
   status: z.enum(CREDENTIAL_LOGIN_SESSION_STATUSES),
 });
+
+export const loginStreamClientMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('key'),
+    key: z.string().max(32),
+    code: z.string().max(32),
+    windowsVirtualKeyCode: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal('insertText'),
+    text: z.string().min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal('mouse'),
+    mouseType: z.enum(['mousePressed', 'mouseReleased']),
+    x: z.number().nonnegative(),
+    y: z.number().nonnegative(),
+    button: z.enum(['left', 'middle', 'right']),
+    clickCount: z.number().int().min(1).max(2),
+  }),
+  z.object({
+    type: z.literal('wheel'),
+    x: z.number().nonnegative(),
+    y: z.number().nonnegative(),
+    deltaX: z.number(),
+    deltaY: z.number(),
+  }),
+  z.object({
+    type: z.literal('viewport'),
+    width: z.number().int().min(200).max(2_000),
+    height: z.number().int().min(200).max(2_000),
+    deviceScaleFactor: z.number().min(1).max(2),
+    mobile: z.boolean(),
+  }),
+]);
 
 export function credentialSessionExpiredMessage(platform: Platform) {
   return `The ${PLATFORM_LABELS[platform]} session has expired or been revoked. Replace the stored cookies to continue collecting media.`;
@@ -414,6 +448,9 @@ export type CredentialLoginSession = z.infer<
 >;
 export type CredentialLoginSessionState = z.infer<
   typeof credentialLoginSessionStateSchema
+>;
+export type LoginStreamClientMessage = z.infer<
+  typeof loginStreamClientMessageSchema
 >;
 export type Collection = z.infer<typeof collectionSchema>;
 

@@ -29,7 +29,7 @@ Railway should be configured as four services in one project, plus an optional f
 - `web` — deploys the repository root with `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`.
 - `Postgres` — add Railway's managed PostgreSQL service.
 - `Redis` — add Railway's managed Redis service.
-- `browserless` — optional, enables the in-app platform sign-in flow. Deploy the `ghcr.io/browserless/chromium` image, generate its public domain, and set `TOKEN` to a random secret.
+- `browserless` — optional, enables the in-app platform sign-in flow. Deploy the `ghcr.io/browserless/chromium` image and set `TOKEN` to a random secret. No public domain is needed; only the backend talks to it.
 
 Create the database services first, then configure the backend variables. Use Railway reference variables for the service names if you choose different names:
 
@@ -56,11 +56,10 @@ VIDEO_MAX_DIMENSION=1280
 
 Set the backend service's pre-deploy command to `pnpm db:migrate`, healthcheck path to `/health`, attach a Railway volume mounted at `/data`, and generate its public domain. Do not scale this volume-backed service horizontally.
 
-When the `browserless` service is present, point the backend at it so the sign-in flow is enabled. The API reaches the browser through Railway's private network, while the user's browser streams the login page through the browserless public domain, protected by the same token:
+When the `browserless` service is present, point the backend at it over Railway's private network so the sign-in flow is enabled. The page stream travels through the API's authenticated routes, so the browserless service stays private:
 
 ```text
 BROWSERLESS_URL=http://browserless.railway.internal:3000
-BROWSERLESS_PUBLIC_URL=https://${{browserless.RAILWAY_PUBLIC_DOMAIN}}
 BROWSERLESS_TOKEN=${{browserless.TOKEN}}
 ```
 
@@ -80,7 +79,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The one-shot `migrate` service applies committed database migrations before the API and worker start. The `browserless` service powers the interactive platform sign-in and is reachable only on localhost.
+The one-shot `migrate` service applies committed database migrations before the API and worker start. The `browserless` service powers the interactive platform sign-in and is only reachable by the API inside the compose network.
 
 Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only session cookie. Set `COOKIE_SECURE=true` when serving it over HTTPS. The web service proxies `/api` requests so the cookie remains first-party even though the API runs as a separate service.
 
@@ -138,7 +137,7 @@ The migration uploads each object before atomically updating its database locati
 
 ## Platform authentication
 
-The easiest way to authenticate is the platform access panel's **Sign in with browser** action. It opens the platform's official login page inside a short-lived managed browser (a [browserless](https://github.com/browserless/browserless) container) streamed into the gallery, so it works on phones and tablets where cookie export is impractical. Credentials are typed directly into the platform's own page — the application never sees or stores passwords — and once the platform sets its session cookies, the API detects them, stores them as the platform credential, and closes the browser. Sessions time out after 10 minutes. This requires the `browserless` service (included in `docker-compose.yml`) and the API's `BROWSERLESS_URL`, `BROWSERLESS_PUBLIC_URL`, and optionally `BROWSERLESS_TOKEN` variables; when they are not configured, the action is hidden.
+The easiest way to authenticate is the platform access panel's **Sign in with browser** action. It opens the platform's official login page inside a short-lived managed browser (a [browserless](https://github.com/browserless/browserless) container) whose display is streamed into the gallery through the authenticated API, so it works on phones and tablets where cookie export is impractical. Credentials are typed directly into the platform's own page — the application never sees or stores passwords — and once the platform sets its session cookies, the API detects them, stores them as the platform credential, and closes the browser. Sessions time out after 10 minutes. This requires the `browserless` service (included in `docker-compose.yml`) and the API's `BROWSERLESS_URL` and optionally `BROWSERLESS_TOKEN` variables; when they are not configured, the action is hidden. The browserless container never needs a public port: the API relays the page display and user input over Chrome DevTools Protocol through the same authenticated web origin as the rest of the gallery.
 
 Alternatively, open the relevant platform access panel in the gallery and either paste a Cookie request header or select a Netscape-format `cookies.txt` export. The input must contain the platform's authentication cookies:
 

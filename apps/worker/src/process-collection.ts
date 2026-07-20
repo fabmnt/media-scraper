@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, rm } from 'node:fs/promises';
-import { resolve, sep } from 'node:path';
+import { access, chmod, copyFile, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve, sep } from 'node:path';
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import {
   collections,
@@ -120,6 +121,15 @@ export async function processCollection(
   }, CLAIM_RENEWAL_INTERVAL_MS);
   claimRenewal.unref();
 
+  // yt-dlp rewrites the cookie jar when it exits, so extractors receive a
+  // writable per-run copy; the credentials volume is mounted read-only. The
+  // copy stays outside the publicly served media root and is removed in the
+  // finally block below.
+  const runCookiesPath = join(
+    tmpdir(),
+    `media-scraper-cookies-${job.collectionId}.txt`,
+  );
+
   let hasCredential = false;
   let retainedPaths = new Set<string>();
   try {
@@ -134,13 +144,17 @@ export async function processCollection(
         if (error.code === 'ENOENT') return false;
         throw error;
       });
+    if (hasCredential) {
+      await copyFile(credentialPath, runCookiesPath);
+      await chmod(runCookiesPath, 0o600);
+    }
     const preferredExtractor =
       job.platform === 'instagram' ? 'gallery-dl' : 'yt-dlp';
     const extractedItems = await extractMedia(job.url, outputDirectory, {
       maxAssetBytes,
       maxCollectionBytes,
       timeoutMs: extractionTimeoutMs,
-      ...(hasCredential ? { cookiesPath: credentialPath } : {}),
+      ...(hasCredential ? { cookiesPath: runCookiesPath } : {}),
       preferredExtractor,
       signal,
     });
@@ -213,6 +227,9 @@ export async function processCollection(
     throw error;
   } finally {
     clearInterval(claimRenewal);
+    if (hasCredential) {
+      await rm(runCookiesPath, { force: true }).catch(() => undefined);
+    }
   }
 
   await removeUntrackedFiles(outputDirectory, root, retainedPaths).catch(

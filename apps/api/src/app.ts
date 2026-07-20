@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import websocket from '@fastify/websocket';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { ZodError } from 'zod';
@@ -124,6 +125,7 @@ export async function buildApp(config: ApiConfig) {
     accessToken: config.accessToken,
     secureCookie: config.secureCookie,
   });
+  await app.register(websocket);
   await app.register(swagger, {
     openapi: {
       info: { title: 'Media Scraper API', version: '0.1.0' },

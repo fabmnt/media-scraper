@@ -389,12 +389,32 @@ footer {
   margin: 0;
   color: var(--muted);
 }
-.login-dialog-frame {
+.login-viewer {
+  position: relative;
   flex: 1;
   min-height: 0;
-  width: 100%;
   background: #fff;
   border: 1px solid var(--line);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+.login-viewer-frame {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.login-viewer-keyboard {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
 }
 .login-dialog-status {
   flex: 1;

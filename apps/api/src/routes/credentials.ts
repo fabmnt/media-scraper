@@ -12,7 +12,9 @@ import {
   savePlatformCredential,
 } from '../platform-cookies.js';
 import {
+  attachLoginSessionStream,
   cancelLoginSession,
+  getActiveLoginSession,
   pollLoginSession,
   startLoginSession,
   type BrowserLoginConfig,
@@ -100,9 +102,31 @@ export async function credentialRoutes(
       return {
         id: session.id,
         platform: session.platform,
-        liveUrl: session.liveUrl,
         expiresAt: session.expiresAt.toISOString(),
       };
+    },
+  );
+
+  app.get<{ Params: LoginSessionRouteParams }>(
+    '/:platform/login-sessions/:sessionId/stream',
+    { websocket: true },
+    (socket, request) => {
+      platformSchema.parse(request.params.platform);
+      if (!browserLogin) {
+        socket.close();
+        return;
+      }
+      const session = getActiveLoginSession(
+        browserLogin,
+        request.params.sessionId,
+      );
+      if (!session) {
+        socket.close();
+        return;
+      }
+      void attachLoginSessionStream(browserLogin, session, socket).catch(() =>
+        socket.close(),
+      );
     },
   );
 

@@ -7,6 +7,7 @@ import {
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
+import { CredentialLoginViewer } from './CredentialLoginViewer';
 
 const LOGIN_SESSION_POLL_INTERVAL_MS = 2_000;
 
@@ -25,6 +26,7 @@ export function CredentialLoginDialog({
   const [session, setSession] = useState<CredentialLoginSession>();
   const [startError, setStartError] = useState<string>();
   const [startAttempt, setStartAttempt] = useState(0);
+  const [streamEnded, setStreamEnded] = useState(false);
   const label = PLATFORM_LABELS[platform];
 
   useEffect(() => {
@@ -42,6 +44,7 @@ export function CredentialLoginDialog({
     let cancelled = false;
     setSession(undefined);
     setStartError(undefined);
+    setStreamEnded(false);
     api
       .startCredentialLoginSession(platform)
       .then((startedSession) => {
@@ -88,6 +91,7 @@ export function CredentialLoginDialog({
   }, [platform, session]);
 
   const expired = status === 'expired';
+  const failed = Boolean(startError) || expired || streamEnded;
   return (
     <dialog
       aria-label={`${label} sign-in`}
@@ -114,12 +118,13 @@ export function CredentialLoginDialog({
         there directly and is never stored here. When the sign-in completes,
         this window detects the session and saves it automatically.
       </p>
-      {startError || expired ? (
+      {failed ? (
         <div className="login-dialog-status" role="alert">
           <p className="error">
-            {expired
-              ? 'The sign-in session expired before login completed.'
-              : startError}
+            {startError ||
+              (expired
+                ? 'The sign-in session expired before login completed.'
+                : 'The sign-in browser disconnected.')}
           </p>
           <button
             onClick={() => setStartAttempt((attempt) => attempt + 1)}
@@ -129,10 +134,10 @@ export function CredentialLoginDialog({
           </button>
         </div>
       ) : session ? (
-        <iframe
-          className="login-dialog-frame"
-          src={session.liveUrl}
-          title={`${label} sign-in page`}
+        <CredentialLoginViewer
+          onStreamEnded={() => setStreamEnded(true)}
+          platform={platform}
+          session={session}
         />
       ) : (
         <div className="login-dialog-status">

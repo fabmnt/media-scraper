@@ -4,14 +4,12 @@ import { buildApp } from './app.js';
 const config = loadApiConfig();
 const app = await buildApp({
   accessToken: config.API_ACCESS_TOKEN,
-  browserLogin:
-    config.BROWSERLESS_URL && config.BROWSERLESS_PUBLIC_URL
-      ? {
-          publicUrl: config.BROWSERLESS_PUBLIC_URL,
-          token: config.BROWSERLESS_TOKEN,
-          url: config.BROWSERLESS_URL,
-        }
-      : undefined,
+  browserLogin: config.BROWSERLESS_URL
+    ? {
+        token: config.BROWSERLESS_TOKEN,
+        url: config.BROWSERLESS_URL,
+      }
+    : undefined,
   credentialsRoot: config.CREDENTIALS_ROOT,
   databaseUrl: config.DATABASE_URL,
   mediaRoot: config.MEDIA_ROOT,
