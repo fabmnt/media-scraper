@@ -1,7 +1,11 @@
 import type { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { collections, type Database } from '@media-scraper/database';
-import type { CollectionJobPayload } from '@media-scraper/shared';
+import {
+  SUPPORTED_PLATFORMS,
+  type CollectionJobPayload,
+  type Platform,
+} from '@media-scraper/shared';
 import { ensureCollectionQueued } from './collection-queue.js';
 
 export async function reconcileQueuedCollections(
@@ -11,11 +15,18 @@ export async function reconcileQueuedCollections(
   const queuedCollections = await db
     .select({
       id: collections.id,
-      platform: collections.platform,
-      sourceUrl: collections.sourceUrl,
+      platform: sql<Platform>`${collections.platform}`,
+      sourceUrl: sql<string>`${collections.sourceUrl}`,
     })
     .from(collections)
-    .where(eq(collections.status, 'queued'));
+    .where(
+      and(
+        eq(collections.status, 'queued'),
+        ne(collections.origin, 'upload'),
+        isNotNull(collections.sourceUrl),
+        inArray(collections.platform, SUPPORTED_PLATFORMS),
+      ),
+    );
   const results = await Promise.allSettled(
     queuedCollections.map((collection) =>
       ensureCollectionQueued(queue, collection),

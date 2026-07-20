@@ -1,18 +1,29 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNotNull,
+  ne,
+  sql,
+} from 'drizzle-orm';
 import { z } from 'zod';
 import {
   collectionStatusSchema,
   COLLECTION_JOB_OPTIONS,
   COLLECTION_QUEUE_NAME,
+  SUPPORTED_PLATFORMS,
   createCollectionBatchSchema,
   createCollectionSchema,
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
   type CollectionJobPayload,
   type Page,
+  type Platform,
   type Collection,
 } from '@media-scraper/shared';
 import { collections, type Database } from '@media-scraper/database';
@@ -181,8 +192,20 @@ export async function collectionRoutes(
     const [collection] = await db
       .update(collections)
       .set({ status: 'queued', errorMessage: null, updatedAt: new Date() })
-      .where(and(eq(collections.id, id), eq(collections.status, 'failed')))
-      .returning();
+      .where(
+        and(
+          eq(collections.id, id),
+          eq(collections.status, 'failed'),
+          ne(collections.origin, 'upload'),
+          isNotNull(collections.sourceUrl),
+          inArray(collections.platform, SUPPORTED_PLATFORMS),
+        ),
+      )
+      .returning({
+        ...getTableColumns(collections),
+        platform: sql<Platform>`${collections.platform}`,
+        sourceUrl: sql<string>`${collections.sourceUrl}`,
+      });
     if (!collection) {
       const [existing] = await db
         .select({ status: collections.status })

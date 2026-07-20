@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { MANUAL_UPLOAD_LABEL } from '@media-scraper/shared';
 import {
   useInfiniteQuery,
   useMutation,
@@ -123,12 +124,16 @@ export function JobsPanel() {
             <span className={`status status-${job.status}`}>{job.status}</span>
             <div>
               <strong>
-                {job.platform}
+                {job.platform === 'manual' ? MANUAL_UPLOAD_LABEL : job.platform}
                 {job.origin === 'automatic' ? ' · automatic' : ''}
               </strong>
-              <a href={job.sourceUrl} rel="noreferrer" target="_blank">
-                {job.sourceUrl}
-              </a>
+              {job.sourceUrl ? (
+                <a href={job.sourceUrl} rel="noreferrer" target="_blank">
+                  {job.sourceUrl}
+                </a>
+              ) : (
+                <span>Uploaded from your device</span>
+              )}
               {job.errorMessage && <small>{job.errorMessage}</small>}
             </div>
             {job.status === 'failed' && (

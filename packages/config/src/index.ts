@@ -103,12 +103,23 @@ const apiEnvironmentSchema = commonEnvironmentSchema
     PROFILE_DISCOVERY_CACHE_TTL_SECONDS: positiveInteger
       .max(MAX_PROFILE_DISCOVERY_CACHE_TTL_SECONDS)
       .default(DEFAULT_PROFILE_DISCOVERY_CACHE_TTL_SECONDS),
+    MAX_ASSET_BYTES: positiveInteger.default(DEFAULT_MAX_ASSET_BYTES),
+    MAX_COLLECTION_BYTES: positiveInteger.default(DEFAULT_MAX_COLLECTION_BYTES),
     PROFILE_DISCOVERY_TIMEOUT_MS: positiveInteger
       .max(MAX_PROFILE_DISCOVERY_TIMEOUT_MS)
       .default(DEFAULT_PROFILE_DISCOVERY_TIMEOUT_MS),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
   })
-  .superRefine(validateStorageEnvironment);
+  .superRefine((config, context) => {
+    validateStorageEnvironment(config, context);
+    if (config.MAX_ASSET_BYTES > config.MAX_COLLECTION_BYTES) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Asset limit cannot exceed collection limit',
+        path: ['MAX_ASSET_BYTES'],
+      });
+    }
+  });
 
 const workerEnvironmentSchema = commonEnvironmentSchema
   .extend({

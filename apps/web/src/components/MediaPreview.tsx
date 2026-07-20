@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MediaItem } from '@media-scraper/shared';
+import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -22,6 +22,8 @@ export function MediaPreview({
   const [assetIndex, setAssetIndex] = useState(0);
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
+  const platformLabel =
+    item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
   const canGoPrevious = itemIndex > 0 || assetIndex > 0;
   const canGoNext = item
     ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1
@@ -114,7 +116,7 @@ export function MediaPreview({
       <div className="media-preview-dialog">
         <header className="media-preview-header">
           <div>
-            <span className="eyebrow">{item.platform}</span>
+            <span className="eyebrow">{platformLabel}</span>
             <strong>{item.authorName ?? 'Unknown creator'}</strong>
           </div>
           <span className="preview-position">
@@ -135,7 +137,7 @@ export function MediaPreview({
         <div className="media-preview-stage">
           {asset?.type === 'image' ? (
             <img
-              alt={item.caption ?? `${item.platform} media`}
+              alt={item.caption ?? `${platformLabel} media`}
               onTouchEnd={(event) => {
                 handleTouchEnd(event.changedTouches[0]);
               }}
@@ -176,9 +178,11 @@ export function MediaPreview({
         <div className="media-preview-footer">
           <p>{item.caption ?? 'No caption available'}</p>
           <div>
-            <a href={item.sourceUrl} rel="noreferrer" target="_blank">
-              View source ↗
-            </a>
+            {item.sourceUrl && (
+              <a href={item.sourceUrl} rel="noreferrer" target="_blank">
+                View source ↗
+              </a>
+            )}
             {asset && (
               <a download href={api.downloadUrl(asset.id)}>
                 Download file

@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  MANUAL_UPLOAD_LABEL,
   MEDIA_GROUP_MODES,
   MEDIA_LIBRARY_PAGE_SIZE,
+  MEDIA_PLATFORMS,
   MEDIA_SORT_OPTIONS,
-  SUPPORTED_PLATFORMS,
   type MediaGroupMode,
   type MediaItem,
   type MediaItemGroup,
+  type MediaPlatform,
   type MediaSort,
-  type Platform,
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
@@ -26,7 +27,7 @@ const GALLERY_QUERY_PARAMETER = {
 
 interface GalleryFilters {
   groupMode: MediaGroupMode;
-  platform: Platform | undefined;
+  platform: MediaPlatform | undefined;
   search: string;
   sortBy: MediaSort;
 }
@@ -46,7 +47,7 @@ interface LoadedGroupPages {
 
 function filtersFromUrl(): GalleryFilters {
   const searchParameters = new URLSearchParams(window.location.search);
-  const platform = SUPPORTED_PLATFORMS.find(
+  const platform = MEDIA_PLATFORMS.find(
     (item) => item === searchParameters.get(GALLERY_QUERY_PARAMETER.platform),
   );
   const groupMode = MEDIA_GROUP_MODES.find(
@@ -403,15 +404,15 @@ export function Gallery() {
             onChange={(event) =>
               updateFilters({
                 platform: (event.target.value || undefined) as
-                  Platform | undefined,
+                  MediaPlatform | undefined,
               })
             }
             value={platform ?? ''}
           >
             <option value="">All platforms</option>
-            {SUPPORTED_PLATFORMS.map((item) => (
+            {MEDIA_PLATFORMS.map((item) => (
               <option key={item} value={item}>
-                {item}
+                {item === 'manual' ? MANUAL_UPLOAD_LABEL : item}
               </option>
             ))}
           </select>

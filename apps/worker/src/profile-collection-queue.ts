@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Queue } from 'bullmq';
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import {
   collections,
   mediaItems,
@@ -80,9 +80,9 @@ export async function queueDiscoveredProfileMedia(
             .select({
               id: collections.id,
               origin: collections.origin,
-              platform: collections.platform,
+              platform: sql<Platform>`${collections.platform}`,
               sourceId: collections.discoveredSourceId,
-              sourceUrl: collections.sourceUrl,
+              sourceUrl: sql<string>`${collections.sourceUrl}`,
               status: collections.status,
             })
             .from(collections)
@@ -140,8 +140,8 @@ export async function queueDiscoveredProfileMedia(
           .onConflictDoNothing()
           .returning({
             id: collections.id,
-            platform: collections.platform,
-            sourceUrl: collections.sourceUrl,
+            platform: sql<Platform>`${collections.platform}`,
+            sourceUrl: sql<string>`${collections.sourceUrl}`,
           });
   await queueCollections(collectionQueue, pendingCollections, db);
 

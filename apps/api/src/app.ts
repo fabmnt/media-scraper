@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -15,6 +16,7 @@ import {
   PROFILE_BACKFILL_QUEUE_NAME,
   type AutomaticProfileJobPayload,
   type CollectionJobPayload,
+  MAX_UPLOAD_FILE_COUNT,
   type ProfileBackfillJobPayload,
 } from '@media-scraper/shared';
 import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
@@ -22,6 +24,7 @@ import { automaticProfileRoutes } from './routes/automatic-profiles.js';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
 import { mediaRoutes } from './routes/media.js';
+import { uploadRoutes } from './routes/uploads.js';
 import { profileArchiveRoutes } from './routes/profile-archives.js';
 import { profileRoutes } from './routes/profiles.js';
 import { registerAuthentication } from './auth.js';
@@ -62,6 +65,8 @@ interface ApiConfig {
   accessToken: string;
   credentialsRoot: string;
   databaseUrl: string;
+  maxAssetBytes: number;
+  maxCollectionBytes: number;
   mediaRoot: string;
   mediaStorage: MediaStorageOptions;
   profileDiscoveryCacheTtlSeconds: number;
@@ -118,6 +123,15 @@ export async function buildApp(config: ApiConfig) {
     origin: config.webOrigin,
     methods: ALLOWED_HTTP_METHODS,
   });
+  await app.register(multipart, {
+    throwFileSizeLimit: false,
+    limits: {
+      files: MAX_UPLOAD_FILE_COUNT,
+      fileSize: config.maxAssetBytes,
+      fields: 2,
+      parts: MAX_UPLOAD_FILE_COUNT + 2,
+    },
+  });
   await registerAuthentication(app, {
     accessToken: config.accessToken,
     secureCookie: config.secureCookie,
@@ -164,6 +178,12 @@ export async function buildApp(config: ApiConfig) {
   await app.register(mediaRoutes, {
     prefix: '/media-items',
     db: database.db,
+    storage,
+  });
+  await app.register(uploadRoutes, {
+    prefix: '/uploads',
+    db: database.db,
+    maxCollectionBytes: config.maxCollectionBytes,
     storage,
   });
 

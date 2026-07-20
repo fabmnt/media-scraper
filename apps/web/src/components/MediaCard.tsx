@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { MediaItem } from '@media-scraper/shared';
+import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useVideoVolume } from '../hooks/useVideoVolume';
@@ -29,6 +29,8 @@ export function MediaCard({
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
+  const platformLabel =
+    item.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item.platform;
 
   useEffect(() => {
     if (assetIndex >= item.assets.length) setAssetIndex(0);
@@ -88,7 +90,7 @@ export function MediaCard({
       >
         {selectedAsset?.type === 'image' ? (
           <img
-            alt={item.caption ?? `${item.platform} media`}
+            alt={item.caption ?? `${platformLabel} media`}
             loading="lazy"
             src={api.mediaUrl(selectedAsset.url)}
           />
@@ -106,7 +108,7 @@ export function MediaCard({
         ) : (
           <div className="empty-preview">No preview</div>
         )}
-        <span className="platform">{item.platform}</span>
+        <span className="platform">{platformLabel}</span>
         <label
           aria-label={`Select media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
           className="media-selection-control"
@@ -168,9 +170,11 @@ export function MediaCard({
               <circle cx="12" cy="12" r="2.5" />
             </svg>
           </button>
-          <a href={item.sourceUrl} rel="noreferrer" target="_blank">
-            Source ↗
-          </a>
+          {item.sourceUrl && (
+            <a href={item.sourceUrl} rel="noreferrer" target="_blank">
+              Source ↗
+            </a>
+          )}
           {selectedAsset && (
             <a download href={api.downloadUrl(selectedAsset.id)}>
               Download{hasMultipleAssets ? ` ${assetIndex + 1}` : ''}
