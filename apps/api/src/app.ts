@@ -124,6 +124,7 @@ export async function buildApp(config: ApiConfig) {
     methods: ALLOWED_HTTP_METHODS,
   });
   await app.register(multipart, {
+    throwFileSizeLimit: false,
     limits: {
       files: MAX_UPLOAD_FILE_COUNT,
       fileSize: config.maxAssetBytes,

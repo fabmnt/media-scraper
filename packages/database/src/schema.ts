@@ -22,10 +22,9 @@ import {
   MEDIA_TYPES,
   PROFILE_BACKFILL_STATUSES,
   MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
-  SUPPORTED_PLATFORMS,
+  type Platform,
 } from '@media-scraper/shared';
 
-export const socialPlatformEnum = pgEnum('platform', SUPPORTED_PLATFORMS);
 export const platformEnum = pgEnum('platform', MEDIA_PLATFORMS);
 export const collectionStatusEnum = pgEnum(
   'collection_status',
@@ -49,7 +48,7 @@ export const automaticProfiles = pgTable(
   'automatic_profiles',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    platform: socialPlatformEnum('platform').notNull(),
+    platform: platformEnum('platform').$type<Platform>().notNull(),
     username: text('username').notNull(),
     intervalMinutes: integer('interval_minutes').notNull(),
     includeStories: boolean('include_stories').notNull().default(false),

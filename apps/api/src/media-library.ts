@@ -20,6 +20,8 @@ import {
   type Database,
 } from '@media-scraper/database';
 import {
+  MANUAL_UPLOAD_LABEL,
+  MANUAL_UPLOAD_PLATFORM,
   MAX_PAGE_SIZE,
   MEDIA_LIBRARY_PAGE_SIZE,
   mediaGroupModeSchema,
@@ -349,7 +351,10 @@ async function listAllGroups({
   return {
     groups: groupsWithRows.map((group): MediaItemGroup => ({
       key: group.key,
-      label: group.payload.value ?? UNKNOWN_USERNAME_LABEL,
+      label:
+        group.payload.value === MANUAL_UPLOAD_PLATFORM
+          ? MANUAL_UPLOAD_LABEL
+          : (group.payload.value ?? UNKNOWN_USERNAME_LABEL),
       items: group.rows.flatMap((row) => {
         const item = serializedItemsById.get(row.id);
         return item ? [item] : [];

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { MediaItem } from '@media-scraper/shared';
+import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
-const MANUAL_UPLOAD_LABEL = 'Manual upload';
 
 export function MediaCard({
   deleteDisabled,

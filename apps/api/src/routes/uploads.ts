@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createWriteStream } from 'node:fs';
 import { mkdir, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
+import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { fileTypeFromFile } from 'file-type';
 import type { FastifyInstance } from 'fastify';
 import {
   collections,
@@ -17,13 +19,18 @@ import {
   manualUploadInputSchema,
   type MediaType,
 } from '@media-scraper/shared';
-import type { MediaStorage, StoredAssetLocation } from '@media-scraper/storage';
+import {
+  MediaStorage,
+  StorageUploadError,
+  type StoredAssetLocation,
+} from '@media-scraper/storage';
 import { serializeMediaItem } from '../serialization.js';
 
 const UPLOAD_DIRECTORY_NAME = 'uploads';
 const UPLOAD_FILE_FIELD_NAME = 'files';
 const UPLOAD_METADATA_FIELDS = new Set(['platform', 'username']);
 const UNSAFE_IMAGE_MIME_TYPE = 'image/svg+xml';
+const STORE_CONCURRENCY = 4;
 
 interface UploadedFile {
   absolutePath: string;
@@ -42,6 +49,20 @@ interface UploadRoutesOptions {
 
 function badUploadRequest(message: string) {
   return Object.assign(new Error(message), { statusCode: 400 });
+}
+
+function assetTooLargeError(fileName: string) {
+  return Object.assign(
+    new Error(`${fileName} exceeds the configured asset limit`),
+    { statusCode: 413 },
+  );
+}
+
+function collectionTooLargeError() {
+  return Object.assign(
+    new Error('Upload exceeds the configured total size limit'),
+    { statusCode: 413 },
+  );
 }
 
 function uploadedMediaType(mimeType: string): MediaType {
@@ -64,31 +85,49 @@ function safeFileName(fileName: string) {
   return normalizedFileName;
 }
 
-function hashFile(path: string): Promise<string> {
-  return new Promise((resolveHash, reject) => {
-    const hash = createHash('sha256');
-    const stream = createReadStream(path);
-    stream.on('error', reject);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolveHash(hash.digest('hex')));
-  });
+async function writeUploadedFile(
+  stream: NodeJS.ReadableStream,
+  absolutePath: string,
+): Promise<string> {
+  const hash = createHash('sha256');
+  await pipeline(
+    stream,
+    new Transform({
+      transform(chunk, _encoding, callback) {
+        hash.update(chunk);
+        callback(null, chunk);
+      },
+    }),
+    createWriteStream(absolutePath, { flags: 'wx' }),
+  );
+  return hash.digest('hex');
 }
 
 async function describeUploadedFile(
   absolutePath: string,
   fileName: string,
-  mimeType: string,
-  type: MediaType,
+  declaredMimeType: string,
+  contentHash: string,
 ): Promise<UploadedFile> {
-  const [fileStat, contentHash] = await Promise.all([
-    stat(absolutePath),
-    hashFile(absolutePath),
-  ]);
+  const declaredType = uploadedMediaType(declaredMimeType);
+  const detectedFileType = await fileTypeFromFile(absolutePath);
+  if (!detectedFileType) {
+    throw badUploadRequest('Could not identify the uploaded media type');
+  }
+
+  const type = uploadedMediaType(detectedFileType.mime);
+  if (type !== declaredType) {
+    throw badUploadRequest(
+      'Uploaded media type does not match its file content',
+    );
+  }
+
+  const fileStat = await stat(absolutePath);
   return {
     absolutePath,
     contentHash,
     fileName,
-    mimeType,
+    mimeType: detectedFileType.mime,
     sizeBytes: fileStat.size,
     type,
   };
@@ -96,9 +135,11 @@ async function describeUploadedFile(
 
 async function queueFailedUploadCleanup(
   db: Database,
-  locations: StoredAssetLocation[],
+  locations: Iterable<StoredAssetLocation>,
 ) {
-  const storedObjects = locations.filter((location) => location.storageKey);
+  const storedObjects = [...locations].filter(
+    (location) => location.storageKey,
+  );
   if (storedObjects.length === 0) return;
   await db.transaction((transaction) =>
     enqueueAssetCleanup(transaction, storedObjects),
@@ -126,65 +167,64 @@ export async function uploadRoutes(
 
     const fields: Record<string, string> = {};
     const files: UploadedFile[] = [];
-    const storedLocations: StoredAssetLocation[] = [];
+    const storedLocations = new Map<string, StoredAssetLocation>();
     let totalBytes = 0;
     let completed = false;
 
     await mkdir(uploadDirectory, { recursive: true });
     try {
+      let uploadError: Error | undefined;
       for await (const part of request.parts()) {
-        if (part.type === 'field') {
-          if (
-            !UPLOAD_METADATA_FIELDS.has(part.fieldname) ||
-            fields[part.fieldname] !== undefined ||
-            part.valueTruncated
-          ) {
-            throw badUploadRequest('Invalid upload metadata');
-          }
-          fields[part.fieldname] = String(part.value);
+        if (uploadError) {
+          if (part.type === 'file') part.file.resume();
           continue;
         }
 
-        if (part.fieldname !== UPLOAD_FILE_FIELD_NAME || !part.filename) {
-          part.file.resume();
-          throw badUploadRequest('Invalid upload file field');
-        }
+        try {
+          if (part.type === 'field') {
+            if (
+              !UPLOAD_METADATA_FIELDS.has(part.fieldname) ||
+              fields[part.fieldname] !== undefined ||
+              part.valueTruncated
+            ) {
+              throw badUploadRequest('Invalid upload metadata');
+            }
+            fields[part.fieldname] = String(part.value);
+            continue;
+          }
 
-        const fileName = safeFileName(part.filename);
-        const type = uploadedMediaType(part.mimetype);
-        const absolutePath = join(
-          uploadDirectory,
-          `${String(files.length)}-${fileName}`,
-        );
-        await pipeline(
-          part.file,
-          createWriteStream(absolutePath, { flags: 'wx' }),
-        );
-        if (part.file.truncated) {
-          throw Object.assign(
-            new Error(`${fileName} exceeds the configured asset limit`),
-            {
-              statusCode: 413,
-            },
-          );
-        }
+          if (part.fieldname !== UPLOAD_FILE_FIELD_NAME || !part.filename) {
+            part.file.resume();
+            throw badUploadRequest('Invalid upload file field');
+          }
 
-        const uploadedFile = await describeUploadedFile(
-          absolutePath,
-          fileName,
-          part.mimetype.toLowerCase(),
-          type,
-        );
-        totalBytes += uploadedFile.sizeBytes;
-        if (totalBytes > maxCollectionBytes) {
-          throw Object.assign(
-            new Error('Upload exceeds the configured total size limit'),
-            { statusCode: 413 },
+          const fileName = safeFileName(part.filename);
+          const absolutePath = join(
+            uploadDirectory,
+            `${String(files.length)}-${fileName}`,
           );
+          const contentHash = await writeUploadedFile(part.file, absolutePath);
+          if (part.file.truncated) throw assetTooLargeError(fileName);
+
+          const uploadedFile = await describeUploadedFile(
+            absolutePath,
+            fileName,
+            part.mimetype.toLowerCase(),
+            contentHash,
+          );
+          totalBytes += uploadedFile.sizeBytes;
+          if (totalBytes > maxCollectionBytes) {
+            throw collectionTooLargeError();
+          }
+          files.push(uploadedFile);
+        } catch (error) {
+          if (part.type === 'file') part.file.resume();
+          uploadError =
+            error instanceof Error ? error : new Error(String(error));
         }
-        files.push(uploadedFile);
       }
 
+      if (uploadError) throw uploadError;
       if (files.length === 0) {
         throw badUploadRequest('Select at least one media file to upload');
       }
@@ -199,15 +239,39 @@ export async function uploadRoutes(
         username: fields.username || undefined,
       });
       const platform = input.platform ?? MANUAL_UPLOAD_PLATFORM;
-      for (const file of files) {
-        storedLocations.push(
-          await storage.store(
-            file.absolutePath,
-            file.contentHash,
-            file.mimeType,
-          ),
-        );
-      }
+      let nextFileIndex = 0;
+      const storeResults = await Promise.allSettled(
+        Array.from(
+          { length: Math.min(STORE_CONCURRENCY, files.length) },
+          async () => {
+            while (nextFileIndex < files.length) {
+              const file = files[nextFileIndex];
+              nextFileIndex += 1;
+              if (!file) continue;
+              try {
+                storedLocations.set(
+                  file.absolutePath,
+                  await storage.store(
+                    file.absolutePath,
+                    file.contentHash,
+                    file.mimeType,
+                  ),
+                );
+              } catch (error) {
+                if (error instanceof StorageUploadError) {
+                  storedLocations.set(file.absolutePath, error.location);
+                }
+                throw error;
+              }
+            }
+          },
+        ),
+      );
+      const failedStore = storeResults.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected',
+      );
+      if (failedStore) throw failedStore.reason;
 
       const result = await db.transaction(async (transaction) => {
         await transaction.insert(collections).values({
@@ -233,7 +297,7 @@ export async function uploadRoutes(
           .insert(mediaAssets)
           .values(
             files.map((file, position) => {
-              const location = storedLocations[position];
+              const location = storedLocations.get(file.absolutePath);
               if (!location) throw new Error('Uploaded media was not stored');
               return {
                 ...location,
@@ -254,7 +318,7 @@ export async function uploadRoutes(
       completed = true;
       return reply.code(201).send(result);
     } catch (error) {
-      await queueFailedUploadCleanup(db, storedLocations).catch(
+      await queueFailedUploadCleanup(db, storedLocations.values()).catch(
         (cleanupError) =>
           request.log.error(
             cleanupError,

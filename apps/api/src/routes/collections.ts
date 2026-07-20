@@ -1,7 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { and, desc, eq, getTableColumns, inArray, ne, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNotNull,
+  ne,
+  sql,
+} from 'drizzle-orm';
 import { z } from 'zod';
 import {
   collectionStatusSchema,
@@ -188,6 +197,7 @@ export async function collectionRoutes(
           eq(collections.id, id),
           eq(collections.status, 'failed'),
           ne(collections.origin, 'upload'),
+          isNotNull(collections.sourceUrl),
           inArray(collections.platform, SUPPORTED_PLATFORMS),
         ),
       )

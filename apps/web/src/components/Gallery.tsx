@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  MANUAL_UPLOAD_LABEL,
   MEDIA_GROUP_MODES,
   MEDIA_LIBRARY_PAGE_SIZE,
   MEDIA_PLATFORMS,
@@ -411,7 +412,7 @@ export function Gallery() {
             <option value="">All platforms</option>
             {MEDIA_PLATFORMS.map((item) => (
               <option key={item} value={item}>
-                {item === 'manual' ? 'Manual upload' : item}
+                {item === 'manual' ? MANUAL_UPLOAD_LABEL : item}
               </option>
             ))}
           </select>

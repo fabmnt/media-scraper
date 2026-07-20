@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const SUPPORTED_PLATFORMS = ['instagram', 'facebook', 'tiktok'] as const;
 export const MANUAL_UPLOAD_PLATFORM = 'manual' as const;
+export const MANUAL_UPLOAD_LABEL = 'Manual upload';
 export const MEDIA_PLATFORMS = [
   ...SUPPORTED_PLATFORMS,
   MANUAL_UPLOAD_PLATFORM,

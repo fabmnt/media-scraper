@@ -1,5 +1,5 @@
 import type { Queue } from 'bullmq';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { collections, type Database } from '@media-scraper/database';
 import {
   SUPPORTED_PLATFORMS,
@@ -23,6 +23,7 @@ export async function reconcileQueuedCollections(
       and(
         eq(collections.status, 'queued'),
         ne(collections.origin, 'upload'),
+        isNotNull(collections.sourceUrl),
         inArray(collections.platform, SUPPORTED_PLATFORMS),
       ),
     );

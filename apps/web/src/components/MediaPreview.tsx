@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { MediaItem } from '@media-scraper/shared';
+import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -23,7 +23,7 @@ export function MediaPreview({
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
   const platformLabel =
-    item?.platform === 'manual' ? 'Manual upload' : item?.platform;
+    item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
   const canGoPrevious = itemIndex > 0 || assetIndex > 0;
   const canGoNext = item
     ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1

@@ -111,7 +111,16 @@ const apiEnvironmentSchema = commonEnvironmentSchema
       .default(DEFAULT_PROFILE_DISCOVERY_TIMEOUT_MS),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
   })
-  .superRefine(validateStorageEnvironment);
+  .superRefine((config, context) => {
+    validateStorageEnvironment(config, context);
+    if (config.MAX_ASSET_BYTES > config.MAX_COLLECTION_BYTES) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Asset limit cannot exceed collection limit',
+        path: ['MAX_ASSET_BYTES'],
+      });
+    }
+  });
 
 const workerEnvironmentSchema = commonEnvironmentSchema
   .extend({
