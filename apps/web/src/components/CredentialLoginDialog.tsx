@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   PLATFORM_LABELS,
@@ -27,6 +27,7 @@ export function CredentialLoginDialog({
   const [startError, setStartError] = useState<string>();
   const [startAttempt, setStartAttempt] = useState(0);
   const [streamEnded, setStreamEnded] = useState(false);
+  const [terminal, setTerminal] = useState(false);
   const label = PLATFORM_LABELS[platform];
 
   useEffect(() => {
@@ -45,10 +46,17 @@ export function CredentialLoginDialog({
     setSession(undefined);
     setStartError(undefined);
     setStreamEnded(false);
+    setTerminal(false);
     api
       .startCredentialLoginSession(platform)
       .then((startedSession) => {
-        if (!cancelled) setSession(startedSession);
+        if (cancelled) {
+          void api
+            .deleteCredentialLoginSession(platform, startedSession.id)
+            .catch(() => undefined);
+          return;
+        }
+        setSession(startedSession);
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -64,9 +72,8 @@ export function CredentialLoginDialog({
     };
   }, [platform, startAttempt]);
 
-  const completedRef = useRef(false);
   const poll = useQuery({
-    enabled: Boolean(session) && !completedRef.current,
+    enabled: Boolean(session) && !terminal,
     queryFn: () => api.getCredentialLoginSession(platform, session?.id ?? ''),
     queryKey: queryKeys.credentialLoginSession(platform, session?.id ?? ''),
     refetchInterval: LOGIN_SESSION_POLL_INTERVAL_MS,
@@ -74,11 +81,10 @@ export function CredentialLoginDialog({
   const status = poll.data?.status;
 
   useEffect(() => {
-    if (status === 'completed') {
-      completedRef.current = true;
-      onCompleted();
-    }
-  }, [status, onCompleted]);
+    if (terminal || (status !== 'completed' && status !== 'expired')) return;
+    setTerminal(true);
+    if (status === 'completed') onCompleted();
+  }, [onCompleted, status, terminal]);
 
   useEffect(() => {
     return () => {
@@ -90,6 +96,7 @@ export function CredentialLoginDialog({
     };
   }, [platform, session]);
 
+  const handleStreamEnded = useCallback(() => setStreamEnded(true), []);
   const expired = status === 'expired';
   const failed = Boolean(startError) || expired || streamEnded;
   return (
@@ -135,7 +142,7 @@ export function CredentialLoginDialog({
         </div>
       ) : session ? (
         <CredentialLoginViewer
-          onStreamEnded={() => setStreamEnded(true)}
+          onStreamEnded={handleStreamEnded}
           platform={platform}
           session={session}
         />

@@ -76,12 +76,13 @@ export async function profileRoutes(
       };
       reply.raw.once('close', abortDiscovery);
 
+      let credential: Awaited<ReturnType<typeof platformCredentialFile>>;
       let loadedSnapshot = false;
-      const credential = await platformCredentialFile(
-        credentialsRoot,
-        input.platform,
-      );
       try {
+        credential = await platformCredentialFile(
+          credentialsRoot,
+          input.platform,
+        );
         const lookup = cache.page(
           input,
           credential?.version ?? 'public',

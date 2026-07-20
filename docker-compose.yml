@@ -68,13 +68,18 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      browserless: { condition: service_started }
+      browserless: { condition: service_healthy }
 
   browserless:
-    image: ghcr.io/browserless/chromium:latest
+    image: ghcr.io/browserless/chromium:v2.55.0
     restart: unless-stopped
     environment:
       TOKEN: ${BROWSERLESS_TOKEN:-}
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/pressure']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   worker:
     build:

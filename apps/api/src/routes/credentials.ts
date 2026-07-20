@@ -58,13 +58,14 @@ export async function credentialRoutes(
     return {
       configured: Boolean(credential),
       interactiveLogin: Boolean(browserLogin),
-      session: sessionState
-        ? {
-            status: sessionState.status,
-            message: sessionState.message,
-            detectedAt: sessionState.detectedAt.toISOString(),
-          }
-        : null,
+      session:
+        credential && sessionState
+          ? {
+              status: sessionState.status,
+              message: sessionState.message,
+              detectedAt: sessionState.detectedAt.toISOString(),
+            }
+          : null,
     };
   });
 
@@ -111,7 +112,7 @@ export async function credentialRoutes(
     '/:platform/login-sessions/:sessionId/stream',
     { websocket: true },
     (socket, request) => {
-      platformSchema.parse(request.params.platform);
+      const platform = platformSchema.parse(request.params.platform);
       if (!browserLogin) {
         socket.close();
         return;
@@ -120,7 +121,7 @@ export async function credentialRoutes(
         browserLogin,
         request.params.sessionId,
       );
-      if (!session) {
+      if (!session || session.platform !== platform) {
         socket.close();
         return;
       }
@@ -132,9 +133,16 @@ export async function credentialRoutes(
 
   app.get<{ Params: LoginSessionRouteParams }>(
     '/:platform/login-sessions/:sessionId',
-    async (request) => {
-      platformSchema.parse(request.params.platform);
+    async (request, reply) => {
+      const platform = platformSchema.parse(request.params.platform);
       if (!browserLogin) throw new InteractiveLoginUnavailableError();
+      const session = getActiveLoginSession(
+        browserLogin,
+        request.params.sessionId,
+      );
+      if (session && session.platform !== platform) {
+        return reply.code(404).send({ message: 'Login session not found' });
+      }
       const result = await pollLoginSession(
         browserLogin,
         credentialsRoot,
@@ -150,8 +158,15 @@ export async function credentialRoutes(
   app.delete<{ Params: LoginSessionRouteParams }>(
     '/:platform/login-sessions/:sessionId',
     async (request, reply) => {
-      platformSchema.parse(request.params.platform);
+      const platform = platformSchema.parse(request.params.platform);
       if (!browserLogin) throw new InteractiveLoginUnavailableError();
+      const session = getActiveLoginSession(
+        browserLogin,
+        request.params.sessionId,
+      );
+      if (session && session.platform !== platform) {
+        return reply.code(404).send({ message: 'Login session not found' });
+      }
       await cancelLoginSession(browserLogin, request.params.sessionId);
       return reply.code(204).send();
     },

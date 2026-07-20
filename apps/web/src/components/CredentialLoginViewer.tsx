@@ -22,6 +22,8 @@ const SPECIAL_KEY_CODES: Record<string, number> = {
 };
 const MIN_VIEWPORT_DIMENSION = 200;
 const MAX_VIEWPORT_DIMENSION = 2_000;
+const MIN_DEVICE_SCALE_FACTOR = 1;
+const MAX_DEVICE_SCALE_FACTOR = 2;
 
 interface FrameMetadata {
   deviceHeight: number;
@@ -74,18 +76,26 @@ export function CredentialLoginViewer({
         type: 'viewport',
         width: clampViewportDimension(rect.width),
         height: clampViewportDimension(rect.height),
-        deviceScaleFactor: 1,
+        deviceScaleFactor: Math.min(
+          Math.max(window.devicePixelRatio, MIN_DEVICE_SCALE_FACTOR),
+          MAX_DEVICE_SCALE_FACTOR,
+        ),
         mobile: window.matchMedia('(pointer: coarse)').matches,
       });
     };
 
     socket.addEventListener('message', (event) => {
       if (typeof event.data !== 'string') return;
-      const message = JSON.parse(event.data) as {
+      let message: {
         data?: string;
         metadata?: FrameMetadata;
         type: string;
       };
+      try {
+        message = JSON.parse(event.data) as typeof message;
+      } catch {
+        return;
+      }
       if (message.type === 'frame' && message.data && message.metadata) {
         metadataRef.current = message.metadata;
         const frame = frameRef.current;
@@ -166,6 +176,7 @@ export function CredentialLoginViewer({
         });
       }}
       onWheel={(event) => {
+        event.preventDefault();
         const point = pageCoordinates(event.clientX, event.clientY);
         if (!point) return;
         send({

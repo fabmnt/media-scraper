@@ -104,11 +104,12 @@ function connectCdp(wsEndpoint: string): Promise<CdpConnection> {
             return;
           }
           nextCommandId += 1;
+          const commandId = nextCommandId;
           const timeout = setTimeout(() => {
-            pending.delete(nextCommandId);
+            pending.delete(commandId);
             reject(new Error('The login browser did not respond'));
           }, CDP_COMMAND_TIMEOUT_MS);
-          pending.set(nextCommandId, {
+          pending.set(commandId, {
             reject: (error) => {
               clearTimeout(timeout);
               reject(error);
@@ -118,7 +119,7 @@ function connectCdp(wsEndpoint: string): Promise<CdpConnection> {
               resolve(result);
             },
           });
-          socket.send(JSON.stringify({ id: nextCommandId, method, params }));
+          socket.send(JSON.stringify({ id: commandId, method, params }));
         }),
     };
 
@@ -389,6 +390,25 @@ export async function attachLoginSessionStream(
             height: message.height,
             deviceScaleFactor: message.deviceScaleFactor,
             mobile: message.mobile,
+          })
+          .then(() =>
+            connection.send<{ data: string }>('Page.captureScreenshot', {
+              format: 'jpeg',
+              quality: SCREENCAST_JPEG_QUALITY,
+            }),
+          )
+          .then((screenshot) => {
+            if (client.readyState !== StreamClientSocket.OPEN) return;
+            client.send(
+              JSON.stringify({
+                data: screenshot.data,
+                metadata: {
+                  deviceHeight: message.height,
+                  deviceWidth: message.width,
+                },
+                type: 'frame',
+              }),
+            );
           })
           .catch(() => undefined);
         break;
