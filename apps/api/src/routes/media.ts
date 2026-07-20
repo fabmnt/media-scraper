@@ -32,11 +32,34 @@ export async function mediaRoutes(
       .where(eq(mediaAssets.id, id));
     if (!asset) return reply.code(404).send({ message: 'Asset not found' });
     if (asset.storageKey) {
-      const url = await storage.createReadUrl(
+      if (action === 'download') {
+        const url = await storage.createReadUrl(
+          asset.storageKey,
+          asset.fileName,
+        );
+        return reply.redirect(url);
+      }
+
+      const object = await storage.getObject(
         asset.storageKey,
-        action === 'download' ? asset.fileName : undefined,
+        request.headers.range,
       );
-      return reply.redirect(url);
+      if (!object.Body) {
+        throw new Error('Stored media object has no readable body');
+      }
+      if (object.AcceptRanges) {
+        reply.header('accept-ranges', object.AcceptRanges);
+      }
+      if (object.ContentLength !== undefined) {
+        reply.header('content-length', object.ContentLength);
+      }
+      if (object.ContentRange) {
+        reply.header('content-range', object.ContentRange);
+      }
+      if (object.ETag) reply.header('etag', object.ETag);
+      reply.type(asset.mimeType);
+      reply.code(object.$metadata.httpStatusCode ?? 200);
+      return reply.send(object.Body);
     }
     if (!asset.relativePath || !storage.localPath(asset.relativePath)) {
       return reply.code(400).send({ message: 'Invalid asset path' });

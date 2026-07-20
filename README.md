@@ -117,7 +117,7 @@ S3_FORCE_PATH_STYLE=false
 S3_PRESIGNED_URL_TTL_SECONDS=900
 ```
 
-Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API keeps media private and redirects authenticated content requests to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
+Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API keeps media private and proxies authenticated media previews through the application origin, so video frames can be exported from the browser canvas. Direct file downloads redirect to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
 
 After deploying and applying migrations, move existing local assets into the configured bucket with:
 
