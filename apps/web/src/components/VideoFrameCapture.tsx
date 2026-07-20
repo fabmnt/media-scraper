@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const FRAME_IMAGE_MIME_TYPE = 'image/jpeg';
 const FRAME_IMAGE_QUALITY = 0.92;
@@ -98,7 +99,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 }
 
 export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { bindVideo, videoRef } = useVideoVolume();
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -159,7 +160,6 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
         aria-label="Video preview"
         controls
         loop
-        muted
         playsInline
         onLoadedMetadata={(event) => {
           const videoDuration = event.currentTarget.duration;
@@ -169,7 +169,7 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
         onTimeUpdate={(event) =>
           updateCurrentTime(event.currentTarget.currentTime)
         }
-        ref={videoRef}
+        ref={bindVideo}
         src={src}
       />
       <div className="video-frame-controls">

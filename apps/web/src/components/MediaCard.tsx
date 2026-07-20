@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
 
@@ -24,7 +25,7 @@ export function MediaCard({
   onSelect: () => void;
   previewOpen: boolean;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const { bindVideo, videoRef } = useVideoVolume();
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
@@ -97,10 +98,9 @@ export function MediaCard({
             key={selectedAsset.id}
             onClick={(event) => event.stopPropagation()}
             loop
-            muted
             playsInline
             preload="metadata"
-            ref={videoRef}
+            ref={bindVideo}
             src={api.mediaUrl(selectedAsset.url)}
           />
         ) : (
