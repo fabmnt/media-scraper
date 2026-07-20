@@ -4,6 +4,8 @@ import type {
   CollectionStatus,
   CreateAutomaticProfileInput,
   CreateProfileArchiveInput,
+  CredentialLoginSession,
+  CredentialLoginSessionState,
   CredentialStatus,
   CreateCollectionBatchInput,
   CreateCollectionInput,
@@ -75,6 +77,18 @@ export const api = {
     }),
   deleteCredential: (platform: Platform) =>
     request<void>(`/credentials/${platform}`, { method: 'DELETE' }),
+  startCredentialLoginSession: (platform: Platform) =>
+    request<CredentialLoginSession>(`/credentials/${platform}/login-sessions`, {
+      method: 'POST',
+    }),
+  getCredentialLoginSession: (platform: Platform, sessionId: string) =>
+    request<CredentialLoginSessionState>(
+      `/credentials/${platform}/login-sessions/${sessionId}`,
+    ),
+  deleteCredentialLoginSession: (platform: Platform, sessionId: string) =>
+    request<void>(`/credentials/${platform}/login-sessions/${sessionId}`, {
+      method: 'DELETE',
+    }),
   createCollection: (input: CreateCollectionInput) =>
     request<Collection>('/collections', {
       method: 'POST',

@@ -1,8 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
 import {
+  markCredentialSessionExpired,
+  markCredentialSessionValid,
+  type Database,
+} from '@media-scraper/database';
+import {
   discoverProfileMedia,
   InvalidProfileCursorError,
+  isPlatformAuthFailure,
 } from '@media-scraper/extractors';
 import { MAX_PROFILE_MEDIA, profileLookupSchema } from '@media-scraper/shared';
 import { platformCredentialFile } from '../platform-cookies.js';
@@ -22,13 +28,20 @@ const PROFILE_DISCOVERY_RETRY_AFTER_SECONDS = 5;
 interface ProfileRoutesOptions {
   cacheTtlSeconds: number;
   credentialsRoot: string;
+  db: Database;
   redis: Redis;
   timeoutMs: number;
 }
 
 export async function profileRoutes(
   app: FastifyInstance,
-  { cacheTtlSeconds, credentialsRoot, redis, timeoutMs }: ProfileRoutesOptions,
+  {
+    cacheTtlSeconds,
+    credentialsRoot,
+    db,
+    redis,
+    timeoutMs,
+  }: ProfileRoutesOptions,
 ) {
   const cache = new ProfileDiscoveryCache(redis, cacheTtlSeconds, timeoutMs);
   const limiter = new ProfileDiscoveryLimiter(
@@ -64,11 +77,11 @@ export async function profileRoutes(
       reply.raw.once('close', abortDiscovery);
 
       let loadedSnapshot = false;
+      const credential = await platformCredentialFile(
+        credentialsRoot,
+        input.platform,
+      );
       try {
-        const credential = await platformCredentialFile(
-          credentialsRoot,
-          input.platform,
-        );
         const lookup = cache.page(
           input,
           credential?.version ?? 'public',
@@ -86,12 +99,22 @@ export async function profileRoutes(
                 'Profile discovery extraction started',
               );
               try {
-                return await discoverProfileMedia(
+                const results = await discoverProfileMedia(
                   { ...input, cursor },
                   credential?.path,
                   loadSignal,
                   MAX_PROFILE_MEDIA,
                 );
+                if (credential) {
+                  await markCredentialSessionValid(db, input.platform).catch(
+                    (stateError: unknown) =>
+                      request.log.warn(
+                        stateError,
+                        'Could not record credential session state',
+                      ),
+                  );
+                }
+                return results;
               } finally {
                 request.log.info(
                   {
@@ -141,6 +164,15 @@ export async function profileRoutes(
             )
             .code(429)
             .send({ message: error.message });
+        }
+        if (credential && isPlatformAuthFailure(error)) {
+          await markCredentialSessionExpired(db, input.platform).catch(
+            (stateError: unknown) =>
+              request.log.warn(
+                stateError,
+                'Could not record credential session state',
+              ),
+          );
         }
         request.log.warn(error, 'Profile discovery failed');
         return reply.code(502).send({

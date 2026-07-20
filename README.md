@@ -23,12 +23,13 @@ The Docker setup provisions all runtime dependencies automatically.
 
 ## Deploy to Railway
 
-Railway should be configured as four services in one project:
+Railway should be configured as four services in one project, plus an optional fifth:
 
 - `backend` — deploys the repository root with the default `Dockerfile`. The final image runs both the API and worker, which lets them share one persistent volume.
 - `web` — deploys the repository root with `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`.
 - `Postgres` — add Railway's managed PostgreSQL service.
 - `Redis` — add Railway's managed Redis service.
+- `browserless` — optional, enables the in-app platform sign-in flow. Deploy the `ghcr.io/browserless/chromium` image and set `TOKEN` to a random secret. No public domain is needed; only the backend talks to it.
 
 Create the database services first, then configure the backend variables. Use Railway reference variables for the service names if you choose different names:
 
@@ -55,6 +56,15 @@ VIDEO_MAX_DIMENSION=1280
 
 Set the backend service's pre-deploy command to `pnpm db:migrate`, healthcheck path to `/health`, attach a Railway volume mounted at `/data`, and generate its public domain. Do not scale this volume-backed service horizontally.
 
+When the `browserless` service is present, point the backend at it over Railway's private network so the sign-in flow is enabled. The page stream travels through the API's authenticated routes, so the browserless service stays private:
+
+```text
+BROWSERLESS_URL=http://browserless.railway.internal:3000
+BROWSERLESS_TOKEN=${{browserless.TOKEN}}
+```
+
+Interactive sign-in sessions originate from the backend's datacenter IP. Platforms can occasionally answer a first login from a new location with a checkpoint challenge; completing it inside the same streamed browser usually succeeds, and captured sessions typically remain valid for months.
+
 On the `web` service, set `API_PROXY_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}`, set `RAILWAY_DOCKERFILE_PATH=/docker/web.Dockerfile`, and generate a public domain. The web service uses that backend URL as its server-side proxy target while browser requests stay on the web origin, allowing session cookies to remain first-party. Finally, change the backend's `WEB_ORIGIN` to `https://${{web.RAILWAY_PUBLIC_DOMAIN}}` and redeploy it. Railway provides `PORT` automatically; the API and web preview are configured to listen on it.
 
 Railway's private networking supplies the database and Redis connections through the reference variables. Keep the `/data` volume attached for extraction workspace and platform credentials; with local storage, it also holds all downloaded media.
@@ -69,7 +79,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The one-shot `migrate` service applies committed database migrations before the API and worker start.
+The one-shot `migrate` service applies committed database migrations before the API and worker start. The `browserless` service powers the interactive platform sign-in and is only reachable by the API inside the compose network.
 
 Open the gallery at <http://localhost:5173>, sign in with `API_ACCESS_TOKEN`, and view API documentation at <http://localhost:3000/docs>. The API stores the token in an HTTP-only session cookie. Set `COOKIE_SECURE=true` when serving it over HTTPS. The web service proxies `/api` requests so the cookie remains first-party even though the API runs as a separate service.
 
@@ -127,13 +137,17 @@ The migration uploads each object before atomically updating its database locati
 
 ## Platform authentication
 
-Open the relevant platform access panel in the gallery and either paste a Cookie request header or select a Netscape-format `cookies.txt` export. The input must contain the platform's authentication cookies:
+The easiest way to authenticate is the platform access panel's **Sign in with browser** action. It opens the platform's official login page inside a short-lived managed browser (a [browserless](https://github.com/browserless/browserless) container) whose display is streamed into the gallery through the authenticated API, so it works on phones and tablets where cookie export is impractical. Credentials are typed directly into the platform's own page — the application never sees or stores passwords — and once the platform sets its session cookies, the API detects them, stores them as the platform credential, and closes the browser. Sessions time out after 10 minutes. This requires the `browserless` service (included in `docker-compose.yml`) and the API's `BROWSERLESS_URL` and optionally `BROWSERLESS_TOKEN` variables; when they are not configured, the action is hidden. The browserless container never needs a public port: the API relays the page display and user input over Chrome DevTools Protocol through the same authenticated web origin as the rest of the gallery.
+
+Alternatively, open the relevant platform access panel in the gallery and either paste a Cookie request header or select a Netscape-format `cookies.txt` export. The input must contain the platform's authentication cookies:
 
 - Instagram: `sessionid`
 - Facebook: `c_user` and `xs`
 - TikTok: `sid_tt`
 
 Each normalized credential is stored separately in a private Docker volume, mounted read-only by the worker, and never returned by the API or placed in queue payloads. A configured status only confirms that a credential is stored; platforms can invalidate sessions at any time.
+
+To make invalidation visible, the API and worker watch extractor output for authentication failures such as `401 Unauthorized`, "login required", and redirects to a login page. When one is detected while a credential is stored, the platform's session is recorded as expired in PostgreSQL: the dashboard shows a warning banner, the platform access panel switches to "Session expired" with the detection time, and failed collections and profile checks report a human-readable session-expired message instead of raw extractor output. Successful authenticated extractions record the session as verified working, so the indicator clears itself after the first successful run with fresh cookies. Rate limiting and checkpoint challenges are intentionally not treated as expirations. Saving or removing a credential resets its session state.
 
 Treat cookie files as passwords. Remove them from the application when they are no longer needed, and replace them after logging out, changing a password, or when the platform invalidates the session.
 

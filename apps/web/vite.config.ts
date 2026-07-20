@@ -10,6 +10,7 @@ const apiProxy = {
       process.env.API_PROXY_URL ||
       process.env.VITE_API_URL ||
       'http://localhost:3000',
+    ws: true,
   },
 };
 

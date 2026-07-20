@@ -14,4 +14,5 @@ export function createDatabase(databaseUrl: string) {
 
 export type Database = ReturnType<typeof createDatabase>['db'];
 
+export * from './credential-states.js';
 export * from './maintenance.js';

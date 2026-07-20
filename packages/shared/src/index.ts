@@ -92,9 +92,16 @@ export type MediaGroupMode = z.infer<typeof mediaGroupModeSchema>;
 export type MediaSort = z.infer<typeof mediaSortSchema>;
 export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
 
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+};
+
 interface PlatformCredentialConfig {
   domain: string;
   fileName: string;
+  loginUrl: string;
   requiredCookies: readonly string[];
 }
 
@@ -102,16 +109,19 @@ export const PLATFORM_CREDENTIALS = {
   instagram: {
     domain: 'instagram.com',
     fileName: 'instagram.cookies.txt',
+    loginUrl: 'https://www.instagram.com/accounts/login/',
     requiredCookies: ['sessionid'],
   },
   facebook: {
     domain: 'facebook.com',
     fileName: 'facebook.cookies.txt',
+    loginUrl: 'https://www.facebook.com/login',
     requiredCookies: ['c_user', 'xs'],
   },
   tiktok: {
     domain: 'tiktok.com',
     fileName: 'tiktok.cookies.txt',
+    loginUrl: 'https://www.tiktok.com/login/',
     requiredCookies: ['sid_tt'],
   },
 } as const satisfies Record<Platform, PlatformCredentialConfig>;
@@ -347,6 +357,17 @@ export interface MediaItemGroups {
   nextGroupOffset: number | null;
 }
 
+export const CREDENTIAL_SESSION_STATUSES = ['valid', 'expired'] as const;
+export const credentialSessionStatusSchema = z.enum(
+  CREDENTIAL_SESSION_STATUSES,
+);
+
+export const credentialSessionSchema = z.object({
+  status: credentialSessionStatusSchema,
+  message: z.string().nullable(),
+  detectedAt: z.iso.datetime(),
+});
+
 export const credentialInputSchema = z.object({
   cookies: z
     .string()
@@ -357,10 +378,80 @@ export const credentialInputSchema = z.object({
 
 export const credentialStatusSchema = z.object({
   configured: z.boolean(),
+  interactiveLogin: z.boolean(),
+  session: credentialSessionSchema.nullable(),
 });
 
+export const CREDENTIAL_LOGIN_SESSION_STATUSES = [
+  'pending',
+  'completed',
+  'expired',
+] as const;
+
+export const credentialLoginSessionSchema = z.object({
+  id: z.uuid(),
+  platform: platformSchema,
+  expiresAt: z.iso.datetime(),
+});
+
+export const credentialLoginSessionStateSchema = z.object({
+  status: z.enum(CREDENTIAL_LOGIN_SESSION_STATUSES),
+});
+
+export const loginStreamClientMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('key'),
+    key: z.string().max(32),
+    code: z.string().max(32),
+    windowsVirtualKeyCode: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal('insertText'),
+    text: z.string().min(1).max(1_000),
+  }),
+  z.object({
+    type: z.literal('mouse'),
+    mouseType: z.enum(['mousePressed', 'mouseReleased']),
+    x: z.number().nonnegative(),
+    y: z.number().nonnegative(),
+    button: z.enum(['left', 'middle', 'right']),
+    clickCount: z.number().int().min(1).max(2),
+  }),
+  z.object({
+    type: z.literal('wheel'),
+    x: z.number().nonnegative(),
+    y: z.number().nonnegative(),
+    deltaX: z.number(),
+    deltaY: z.number(),
+  }),
+  z.object({
+    type: z.literal('viewport'),
+    width: z.number().int().min(200).max(2_000),
+    height: z.number().int().min(200).max(2_000),
+    deviceScaleFactor: z.number().min(1).max(2),
+    mobile: z.boolean(),
+  }),
+]);
+
+export function credentialSessionExpiredMessage(platform: Platform) {
+  return `The ${PLATFORM_LABELS[platform]} session has expired or been revoked. Replace the stored cookies to continue collecting media.`;
+}
+
+export type CredentialSessionStatus = z.infer<
+  typeof credentialSessionStatusSchema
+>;
+export type CredentialSession = z.infer<typeof credentialSessionSchema>;
 export type CredentialInput = z.infer<typeof credentialInputSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
+export type CredentialLoginSession = z.infer<
+  typeof credentialLoginSessionSchema
+>;
+export type CredentialLoginSessionState = z.infer<
+  typeof credentialLoginSessionStateSchema
+>;
+export type LoginStreamClientMessage = z.infer<
+  typeof loginStreamClientMessageSchema
+>;
 export type Collection = z.infer<typeof collectionSchema>;
 
 export interface Page<T> {

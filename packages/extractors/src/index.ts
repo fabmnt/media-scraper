@@ -1,3 +1,4 @@
+export { isPlatformAuthFailure } from './auth-failures.js';
 export { discoverProfileMedia } from './profile-discovery.js';
 export { InvalidProfileCursorError } from './profile-pagination.js';
 

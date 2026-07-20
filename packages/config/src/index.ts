@@ -99,6 +99,8 @@ const apiEnvironmentSchema = commonEnvironmentSchema
     // Railway injects PORT at runtime. Keep API_PORT available for local Docker
     // development, but prefer PORT when API_PORT is not explicitly configured.
     API_PORT: positiveInteger.optional(),
+    BROWSERLESS_TOKEN: optionalEnvironmentString,
+    BROWSERLESS_URL: optionalEnvironmentUrl,
     COOKIE_SECURE: z.stringbool().default(false),
     PROFILE_DISCOVERY_CACHE_TTL_SECONDS: positiveInteger
       .max(MAX_PROFILE_DISCOVERY_CACHE_TTL_SECONDS)

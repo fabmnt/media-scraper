@@ -1,8 +1,17 @@
 import type { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
-import { automaticProfiles, type Database } from '@media-scraper/database';
-import { discoverProfileMedia } from '@media-scraper/extractors';
 import {
+  automaticProfiles,
+  markCredentialSessionExpired,
+  markCredentialSessionValid,
+  type Database,
+} from '@media-scraper/database';
+import {
+  discoverProfileMedia,
+  isPlatformAuthFailure,
+} from '@media-scraper/extractors';
+import {
+  credentialSessionExpiredMessage,
   MAX_PROFILE_MEDIA,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
@@ -45,8 +54,9 @@ export async function processAutomaticProfile(
     return { queuedCollections: 0 };
   }
 
+  let cookiesPath: string | undefined;
   try {
-    const cookiesPath = await profileCredentialPath(
+    cookiesPath = await profileCredentialPath(
       credentialsRoot,
       profile.platform,
     );
@@ -68,6 +78,12 @@ export async function processAutomaticProfile(
       },
     );
 
+    if (cookiesPath) {
+      await markCredentialSessionValid(db, profile.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
     const checkedAt = new Date();
     await db
       .update(automaticProfiles)
@@ -88,6 +104,14 @@ export async function processAutomaticProfile(
   } catch (error) {
     if (signal.aborted) throw error;
 
+    const authFailure =
+      cookiesPath !== undefined && isPlatformAuthFailure(error);
+    if (authFailure) {
+      await markCredentialSessionExpired(db, profile.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
     const checkedAt = new Date();
     const consecutiveFailures = profile.consecutiveFailures + 1;
     const backoffMultiplier = 2 ** Math.min(consecutiveFailures, 10);
@@ -96,7 +120,11 @@ export async function processAutomaticProfile(
       MAX_PROFILE_BACKOFF_MS,
     );
     const message = (
-      error instanceof Error ? error.message : 'Unknown profile check failure'
+      authFailure
+        ? credentialSessionExpiredMessage(profile.platform)
+        : error instanceof Error
+          ? error.message
+          : 'Unknown profile check failure'
     ).slice(0, MAX_ERROR_LENGTH);
     await db
       .update(automaticProfiles)

@@ -15,6 +15,8 @@ export const queryKeys = {
   activeCollections: (status: 'queued' | 'processing') =>
     ['collections', 'active', status] as const,
   credential: (platform: Platform) => ['credentials', platform] as const,
+  credentialLoginSession: (platform: Platform, sessionId: string) =>
+    ['credentials', platform, 'login-sessions', sessionId] as const,
   allMedia: ALL_MEDIA_QUERY_KEY,
   media: (
     groupBy: MediaGroupMode,

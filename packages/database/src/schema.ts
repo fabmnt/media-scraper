@@ -16,6 +16,7 @@ import {
 import {
   COLLECTION_ORIGINS,
   COLLECTION_STATUSES,
+  CREDENTIAL_SESSION_STATUSES,
   MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MEDIA_MAINTENANCE_TYPES,
   MEDIA_TYPES,
@@ -41,6 +42,10 @@ export const profileBackfillStatusEnum = pgEnum(
 export const mediaMaintenanceTypeEnum = pgEnum(
   'media_maintenance_type',
   MEDIA_MAINTENANCE_TYPES,
+);
+export const credentialSessionStatusEnum = pgEnum(
+  'credential_session_status',
+  CREDENTIAL_SESSION_STATUSES,
 );
 
 export const automaticProfiles = pgTable(
@@ -108,6 +113,21 @@ export const profileBackfills = pgTable(
     index('profile_backfills_status_idx').on(table.status),
   ],
 );
+
+export const platformCredentialStates = pgTable('platform_credential_states', {
+  platform: platformEnum('platform').primaryKey(),
+  status: credentialSessionStatusEnum('status').notNull(),
+  message: text('message'),
+  detectedAt: timestamp('detected_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 export const collections = pgTable(
   'collections',
