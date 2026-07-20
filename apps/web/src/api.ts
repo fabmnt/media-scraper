@@ -8,7 +8,9 @@ import type {
   CreateCollectionBatchInput,
   CreateCollectionInput,
   MediaGroupMode,
+  MediaItem,
   MediaItemGroups,
+  MediaPlatform,
   MediaSort,
   Page,
   Platform,
@@ -87,6 +89,18 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     }),
+  uploadMedia: (input: {
+    files: File[];
+    platform?: Platform;
+    username?: string;
+  }) => {
+    const body = new FormData();
+    if (input.platform) body.set('platform', input.platform);
+    const username = input.username?.trim();
+    if (username) body.set('username', username);
+    for (const file of input.files) body.append('files', file);
+    return request<MediaItem>('/uploads', { method: 'POST', body });
+  },
   discoverProfile: (input: ProfileLookupInput) =>
     request<ProfileMediaResults>('/profiles/lookup', {
       method: 'POST',
@@ -139,7 +153,7 @@ export const api = {
     groupOffset?: number;
     limit?: number;
     offset?: number;
-    platform?: Platform | undefined;
+    platform?: MediaPlatform | undefined;
     search?: string | undefined;
     sortBy?: MediaSort;
   }) =>

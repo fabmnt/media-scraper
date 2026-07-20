@@ -1142,6 +1142,83 @@ button:disabled {
   white-space: nowrap;
 }
 
+.media-upload {
+  padding: 32px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.media-upload-heading {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.75fr) minmax(400px, 1.25fr);
+  gap: 60px;
+  align-items: center;
+}
+.media-upload h2 {
+  margin: 8px 0;
+  font-size: 28px;
+}
+.media-upload p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.media-upload form {
+  display: grid;
+  grid-template-columns: 150px minmax(180px, 1fr) auto auto;
+  gap: 8px;
+}
+.media-upload .file-button {
+  display: grid;
+  place-items: center;
+  background: #111310;
+}
+.upload-file-list {
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.upload-file-summary,
+.upload-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.upload-file-summary {
+  color: var(--muted);
+  font:
+    500 9px 'DM Mono',
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.upload-file-summary span:last-child {
+  grid-column: 2 / -1;
+}
+.upload-file span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-file span:nth-child(2) {
+  color: var(--muted);
+  font-size: 11px;
+}
+.upload-file button {
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+.upload-file button:hover {
+  color: #ff8075;
+}
+.media-upload .queue-success {
+  margin-top: 16px;
+  color: var(--accent);
+}
+
 @media (max-width: 1150px) {
   .profile-media-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1160,7 +1237,8 @@ button:disabled {
     padding-left: 20%;
   }
   .collector,
-  .profile-collector-heading {
+  .profile-collector-heading,
+  .media-upload-heading {
     grid-template-columns: 1fr;
     gap: 20px;
   }
@@ -1173,6 +1251,7 @@ button:disabled {
   }
   .automatic-collections,
   .collector,
+  .media-upload,
   .profile-collector {
     padding: 25px;
   }
@@ -1201,6 +1280,7 @@ button:disabled {
     grid-column: 1 / -1;
   }
   .automatic-profile-form,
+  .media-upload form,
   .profile-collector form {
     grid-template-columns: 1fr 1fr;
   }
@@ -1208,6 +1288,7 @@ button:disabled {
     grid-template-columns: 1fr;
   }
   .automatic-profile-form > input,
+  .media-upload form input,
   .profile-collector form input {
     grid-column: 1 / -1;
   }
@@ -1291,10 +1372,12 @@ button:disabled {
   }
   .automatic-profile-form,
   .automatic-profile,
+  .media-upload form,
   .profile-collector form {
     grid-template-columns: 1fr;
   }
   .automatic-profile-form input,
+  .media-upload form input,
   .profile-collector form input {
     grid-column: auto;
   }

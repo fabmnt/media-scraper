@@ -1,6 +1,6 @@
 # Media Scraper
 
-A personal media archive for public Instagram, Facebook, and TikTok posts and galleries. Users can paste an individual post URL or find recent media by platform and username, preview it, and queue only selected items. The application uses deterministic command-line extractors (`yt-dlp`, then `gallery-dl`) and does not include browser automation.
+A personal media archive for public Instagram, Facebook, and TikTok posts and galleries. Users can paste an individual post URL, find recent media by platform and username, or upload a device gallery of images, GIFs, and videos. The application uses deterministic command-line extractors (`yt-dlp`, then `gallery-dl`) and does not include browser automation.
 
 ## Workspace
 
@@ -94,6 +94,8 @@ Automatic collection can watch a platform profile and run an uncached metadata c
 `POST /profile-archives` starts a background archive and enables automatic collection in one request. `POST /profile-archives/:id/retry`, where `id` is the watched profile ID, restores a failed archive's schedule and requeues its current page. The archive follows the profile continuation cursor one bounded page at a time until all available media has been discovered, persists its progress in PostgreSQL, and resumes queued or interrupted runs when the worker starts. Archives and scheduled checks share the same deduplication path, so they can safely overlap. Profile discovery is paced across both queues within each worker process; run one worker replica when a globally strict upstream request interval is required. Stories mean stories that are currently available; expired stories cannot be archived.
 
 Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. Still images are converted to WebP with a maximum 1920px dimension; animated GIF, WebP, APNG, and other multi-frame images are preserved unchanged. An optimized file replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
+
+Manual uploads accept up to 100 images, GIFs, and videos as one gallery. Files are streamed rather than buffered in API memory and use the same `MAX_ASSET_BYTES`, `MAX_COLLECTION_BYTES`, storage backend, deletion path, and retention policy as collected media. The username and platform are optional; an omitted platform is labeled **Manual upload**, and an omitted username is grouped as **Unknown username**.
 
 `MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). Retention is serialized independently from collection processing, so collections can run concurrently without overlapping quota decisions.
 

@@ -1,13 +1,18 @@
 import { z } from 'zod';
 
 export const SUPPORTED_PLATFORMS = ['instagram', 'facebook', 'tiktok'] as const;
+export const MANUAL_UPLOAD_PLATFORM = 'manual' as const;
+export const MEDIA_PLATFORMS = [
+  ...SUPPORTED_PLATFORMS,
+  MANUAL_UPLOAD_PLATFORM,
+] as const;
 export const COLLECTION_STATUSES = [
   'queued',
   'processing',
   'completed',
   'failed',
 ] as const;
-export const COLLECTION_ORIGINS = ['manual', 'automatic'] as const;
+export const COLLECTION_ORIGINS = ['manual', 'automatic', 'upload'] as const;
 export const PROFILE_BACKFILL_STATUSES = [
   'queued',
   'processing',
@@ -49,6 +54,7 @@ export const PROFILE_DISCOVERY_CACHE_ITEMS = MAX_PROFILE_MEDIA;
 export const MAX_PROFILE_CURSOR_LENGTH = 8_192;
 export const MAX_PROFILE_SOURCE_CURSOR_LENGTH = MAX_PROFILE_CURSOR_LENGTH * 4;
 export const MAX_COLLECTION_BATCH_SIZE = 100;
+export const MAX_UPLOAD_FILE_COUNT = 100;
 export const COLLECTION_JOB_OPTIONS = {
   attempts: 3,
   backoff: { type: 'exponential' as const, delay: 5_000 },
@@ -72,6 +78,7 @@ export function automaticProfileSchedulerId(profileId: string) {
 }
 
 export const platformSchema = z.enum(SUPPORTED_PLATFORMS);
+export const mediaPlatformSchema = z.enum(MEDIA_PLATFORMS);
 export const collectionStatusSchema = z.enum(COLLECTION_STATUSES);
 export const collectionOriginSchema = z.enum(COLLECTION_ORIGINS);
 export const profileBackfillStatusSchema = z.enum(PROFILE_BACKFILL_STATUSES);
@@ -81,6 +88,7 @@ export const mediaSortSchema = z.enum(MEDIA_SORT_OPTIONS);
 export const mediaMaintenanceTypeSchema = z.enum(MEDIA_MAINTENANCE_TYPES);
 
 export type Platform = z.infer<typeof platformSchema>;
+export type MediaPlatform = z.infer<typeof mediaPlatformSchema>;
 export const STORY_SUPPORTED_PLATFORMS: readonly Platform[] = [
   'instagram',
   'tiktok',
@@ -162,7 +170,7 @@ export type CollectionJobPayload = z.output<typeof createCollectionSchema> & {
   collectionId: string;
 };
 
-const profileUsernameSchema = z
+export const profileUsernameSchema = z
   .string()
   .trim()
   .regex(
@@ -199,6 +207,12 @@ export const profileMediaResultsSchema = z.object({
   nextCursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).nullable(),
 });
 
+export const manualUploadInputSchema = z.object({
+  platform: platformSchema.optional(),
+  username: profileUsernameSchema.optional(),
+});
+
+export type ManualUploadInput = z.infer<typeof manualUploadInputSchema>;
 export type ProfileLookupInput = z.input<typeof profileLookupSchema>;
 export type ProfileLookup = z.output<typeof profileLookupSchema>;
 export type ProfileMedia = z.infer<typeof profileMediaSchema>;
@@ -310,9 +324,9 @@ export const mediaAssetSchema = z.object({
 
 export const mediaItemSchema = z.object({
   id: z.uuid(),
-  platform: platformSchema,
+  platform: mediaPlatformSchema,
   sourceId: z.string(),
-  sourceUrl: z.url(),
+  sourceUrl: z.url().nullable(),
   authorName: z.string().nullable(),
   caption: z.string().nullable(),
   publishedAt: z.iso.datetime().nullable(),
@@ -323,8 +337,8 @@ export const mediaItemSchema = z.object({
 
 export const collectionSchema = z.object({
   id: z.uuid(),
-  sourceUrl: z.url(),
-  platform: platformSchema,
+  sourceUrl: z.url().nullable(),
+  platform: mediaPlatformSchema,
   status: collectionStatusSchema,
   origin: collectionOriginSchema,
   errorMessage: z.string().nullable(),

@@ -23,8 +23,8 @@ import {
   MAX_PAGE_SIZE,
   MEDIA_LIBRARY_PAGE_SIZE,
   mediaGroupModeSchema,
+  mediaPlatformSchema,
   mediaSortSchema,
-  platformSchema,
   type MediaGroupMode,
   type MediaSort,
   type MediaItem,
@@ -44,7 +44,7 @@ const groupedKeyPayloadSchema = z.discriminatedUnion('groupBy', [
   }),
   z.object({
     groupBy: z.literal('platform'),
-    value: platformSchema,
+    value: mediaPlatformSchema,
   }),
 ]);
 type GroupedKeyPayload = z.infer<typeof groupedKeyPayloadSchema>;
@@ -73,7 +73,7 @@ const mediaQuerySchema = z
       .default(MEDIA_LIBRARY_PAGE_SIZE),
     offset: z.coerce.number().int().nonnegative().default(0),
     groupOffset: z.coerce.number().int().nonnegative().default(0),
-    platform: platformSchema.optional(),
+    platform: mediaPlatformSchema.optional(),
     search: z.string().trim().min(1).max(200).optional(),
     groupBy: mediaGroupModeSchema.default('none'),
     groupKey: groupKeySchema.optional(),
@@ -137,7 +137,7 @@ function buildFilters({
   platform,
   search,
 }: {
-  platform?: z.infer<typeof platformSchema> | undefined;
+  platform?: z.infer<typeof mediaPlatformSchema> | undefined;
   search?: string | undefined;
 }) {
   const filters: SQL[] = [];
@@ -251,7 +251,7 @@ async function listAllGroups({
     .map(({ value }) =>
       groupBy === 'username'
         ? { groupBy, value }
-        : { groupBy, value: platformSchema.parse(value) },
+        : { groupBy, value: mediaPlatformSchema.parse(value) },
     );
   if (groupPayloads.length === 0) {
     return { groups: [], nextGroupOffset: null };

@@ -1,5 +1,6 @@
 import type {
   MediaGroupMode,
+  MediaPlatform,
   MediaSort,
   Platform,
 } from '@media-scraper/shared';
@@ -18,7 +19,7 @@ export const queryKeys = {
   allMedia: ALL_MEDIA_QUERY_KEY,
   media: (
     groupBy: MediaGroupMode,
-    platform?: Platform,
+    platform?: MediaPlatform,
     search?: string,
     sortBy?: MediaSort,
   ) => [...ALL_MEDIA_QUERY_KEY, groupBy, platform, search, sortBy] as const,

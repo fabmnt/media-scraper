@@ -18,13 +18,15 @@ import {
   COLLECTION_STATUSES,
   MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MEDIA_MAINTENANCE_TYPES,
+  MEDIA_PLATFORMS,
   MEDIA_TYPES,
   PROFILE_BACKFILL_STATUSES,
   MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   SUPPORTED_PLATFORMS,
 } from '@media-scraper/shared';
 
-export const platformEnum = pgEnum('platform', SUPPORTED_PLATFORMS);
+export const socialPlatformEnum = pgEnum('platform', SUPPORTED_PLATFORMS);
+export const platformEnum = pgEnum('platform', MEDIA_PLATFORMS);
 export const collectionStatusEnum = pgEnum(
   'collection_status',
   COLLECTION_STATUSES,
@@ -47,7 +49,7 @@ export const automaticProfiles = pgTable(
   'automatic_profiles',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    platform: platformEnum('platform').notNull(),
+    platform: socialPlatformEnum('platform').notNull(),
     username: text('username').notNull(),
     intervalMinutes: integer('interval_minutes').notNull(),
     includeStories: boolean('include_stories').notNull().default(false),
@@ -113,7 +115,7 @@ export const collections = pgTable(
   'collections',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    sourceUrl: text('source_url').notNull(),
+    sourceUrl: text('source_url'),
     platform: platformEnum('platform').notNull(),
     status: collectionStatusEnum('status').notNull().default('queued'),
     origin: collectionOriginEnum('origin').notNull().default('manual'),
@@ -179,7 +181,7 @@ export const mediaItems = pgTable(
       .references(() => collections.id, { onDelete: 'cascade' }),
     platform: platformEnum('platform').notNull(),
     sourceId: text('source_id').notNull(),
-    sourceUrl: text('source_url').notNull(),
+    sourceUrl: text('source_url'),
     authorName: text('author_name'),
     caption: text('caption'),
     publishedAt: timestamp('published_at', { withTimezone: true }),
