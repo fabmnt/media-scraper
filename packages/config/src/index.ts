@@ -18,7 +18,6 @@ const MAX_PROFILE_DISCOVERY_TIMEOUT_MS = 90_000;
 const DEFAULT_RETENTION_TARGET_PERCENT = 70;
 const DEFAULT_RETENTION_TRIGGER_PERCENT = 80;
 const DEFAULT_VIDEO_MAX_DIMENSION = 1_280;
-const DEFAULT_IMAGE_MAX_DIMENSION = 1_920;
 
 function findWorkspaceRoot(startDirectory: string) {
   let directory = resolve(startDirectory);
@@ -118,7 +117,6 @@ const workerEnvironmentSchema = commonEnvironmentSchema
       `Collection concurrency cannot exceed ${String(MAX_COLLECTION_CONCURRENCY)}`,
     ),
     EXTRACTION_TIMEOUT_MS: positiveInteger.default(1_800_000),
-    IMAGE_MAX_DIMENSION: positiveInteger.default(DEFAULT_IMAGE_MAX_DIMENSION),
     MAX_ASSET_BYTES: positiveInteger.default(DEFAULT_MAX_ASSET_BYTES),
     MAX_COLLECTION_BYTES: positiveInteger.default(DEFAULT_MAX_COLLECTION_BYTES),
     MAX_MEDIA_STORAGE_BYTES: positiveInteger.default(

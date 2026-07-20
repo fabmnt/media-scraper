@@ -7,15 +7,12 @@ import { probeFile } from './file-metadata.js';
 
 const AUDIO_BITRATE = '96k';
 const FFMPEG_OUTPUT_LIMIT_BYTES = 1024 * 1024;
-const IMAGE_COMPRESSION_LEVEL = '4';
-const IMAGE_QUALITY = '80';
 const TERMINATION_GRACE_MS = 5_000;
 const VIDEO_CRF = '27';
 const VIDEO_FRAME_RATE = 30;
 const VIDEO_PRESET = 'medium';
 
 interface OptimizationOptions {
-  imageMaxDimension: number;
   outputRoot: string;
   signal: AbortSignal;
   timeoutMs: number;
@@ -98,60 +95,43 @@ async function optimizeFile(
   file: ExtractedFile,
   options: OptimizationOptions,
 ): Promise<ExtractedFile> {
+  if (file.type === 'image') return file;
+
   const [sourceProbe, sourceStat] = await Promise.all([
-    probeFile(file.absolutePath, file.type === 'image'),
+    probeFile(file.absolutePath),
     stat(file.absolutePath),
   ]);
-  if (file.type === 'image' && sourceProbe.frameCount !== 1) return file;
-
-  const outputExtension = file.type === 'video' ? '.mp4' : '.webp';
+  const outputExtension = '.mp4';
   const outputPath = join(
     dirname(file.absolutePath),
     `.${basename(file.absolutePath, extname(file.absolutePath))}.${randomUUID()}${outputExtension}`,
   );
-  const maxDimension =
-    file.type === 'video'
-      ? options.videoMaxDimension
-      : options.imageMaxDimension;
+  const maxDimension = options.videoMaxDimension;
   const scaleFilter = `scale=w='min(${String(maxDimension)},iw)':h='min(${String(maxDimension)},ih)':force_original_aspect_ratio=decrease,scale=w='trunc(iw/2)*2':h='trunc(ih/2)*2'`;
-  const mediaArguments =
-    file.type === 'video'
-      ? [
-          '-map',
-          '0:v:0',
-          '-map',
-          '0:a:0?',
-          '-vf',
-          sourceProbe.frameRate && sourceProbe.frameRate > VIDEO_FRAME_RATE
-            ? `${scaleFilter},fps=fps=${String(VIDEO_FRAME_RATE)}`
-            : scaleFilter,
-          '-c:v',
-          'libx264',
-          '-preset',
-          VIDEO_PRESET,
-          '-crf',
-          VIDEO_CRF,
-          '-pix_fmt',
-          'yuv420p',
-          '-c:a',
-          'aac',
-          '-b:a',
-          AUDIO_BITRATE,
-          '-movflags',
-          '+faststart',
-        ]
-      : [
-          '-vf',
-          scaleFilter,
-          '-frames:v',
-          '1',
-          '-c:v',
-          'libwebp',
-          '-quality',
-          IMAGE_QUALITY,
-          '-compression_level',
-          IMAGE_COMPRESSION_LEVEL,
-        ];
+  const mediaArguments = [
+    '-map',
+    '0:v:0',
+    '-map',
+    '0:a:0?',
+    '-vf',
+    sourceProbe.frameRate && sourceProbe.frameRate > VIDEO_FRAME_RATE
+      ? `${scaleFilter},fps=fps=${String(VIDEO_FRAME_RATE)}`
+      : scaleFilter,
+    '-c:v',
+    'libx264',
+    '-preset',
+    VIDEO_PRESET,
+    '-crf',
+    VIDEO_CRF,
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-b:a',
+    AUDIO_BITRATE,
+    '-movflags',
+    '+faststart',
+  ];
 
   try {
     await runFfmpeg(

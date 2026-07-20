@@ -97,7 +97,6 @@ const collectionWorker = new Worker<CollectionJobPayload>(
       credentialsRoot: config.CREDENTIALS_ROOT,
       db: database.db,
       extractionTimeoutMs: config.EXTRACTION_TIMEOUT_MS,
-      imageMaxDimension: config.IMAGE_MAX_DIMENSION,
       isFinalAttempt: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
       maxAssetBytes: config.MAX_ASSET_BYTES,
       maxCollectionBytes: config.MAX_COLLECTION_BYTES,

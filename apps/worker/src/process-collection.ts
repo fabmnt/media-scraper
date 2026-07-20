@@ -21,7 +21,6 @@ interface ProcessOptions {
   credentialsRoot: string;
   db: Database;
   extractionTimeoutMs: number;
-  imageMaxDimension: number;
   isFinalAttempt: boolean;
   maxAssetBytes: number;
   maxCollectionBytes: number;
@@ -38,7 +37,6 @@ export async function processCollection(
     credentialsRoot,
     db,
     extractionTimeoutMs,
-    imageMaxDimension,
     isFinalAttempt,
     maxAssetBytes,
     maxCollectionBytes,
@@ -144,7 +142,6 @@ export async function processCollection(
     }
 
     const optimizedItems = await optimizeMedia(extractedItems, {
-      imageMaxDimension,
       outputRoot: outputDirectory,
       signal,
       timeoutMs: optimizationTimeoutMs,
