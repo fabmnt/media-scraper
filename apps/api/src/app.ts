@@ -21,6 +21,7 @@ import { MediaStorage, type MediaStorageOptions } from '@media-scraper/storage';
 import { automaticProfileRoutes } from './routes/automatic-profiles.js';
 import { collectionRoutes } from './routes/collections.js';
 import { credentialRoutes } from './routes/credentials.js';
+import type { BrowserLoginConfig } from './platform-login-sessions.js';
 import { mediaRoutes } from './routes/media.js';
 import { profileArchiveRoutes } from './routes/profile-archives.js';
 import { profileRoutes } from './routes/profiles.js';
@@ -60,6 +61,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
 
 interface ApiConfig {
   accessToken: string;
+  browserLogin?: BrowserLoginConfig | undefined;
   credentialsRoot: string;
   databaseUrl: string;
   mediaRoot: string;
@@ -135,6 +137,7 @@ export async function buildApp(config: ApiConfig) {
   });
   await app.register(credentialRoutes, {
     prefix: '/credentials',
+    browserLogin: config.browserLogin,
     credentialsRoot: config.credentialsRoot,
     db: database.db,
   });

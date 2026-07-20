@@ -49,6 +49,9 @@ services:
       PROFILE_DISCOVERY_TIMEOUT_MS: ${PROFILE_DISCOVERY_TIMEOUT_MS:-45000}
       MEDIA_ROOT: /data/media
       CREDENTIALS_ROOT: /data/credentials
+      BROWSERLESS_URL: http://browserless:3000
+      BROWSERLESS_PUBLIC_URL: ${BROWSERLESS_PUBLIC_URL:-http://localhost:${BROWSERLESS_PORT:-3002}}
+      BROWSERLESS_TOKEN: ${BROWSERLESS_TOKEN:-}
       MEDIA_STORAGE_DRIVER: ${MEDIA_STORAGE_DRIVER:-local}
       S3_BUCKET: ${S3_BUCKET:-}
       S3_ENDPOINT: ${S3_ENDPOINT:-}
@@ -66,6 +69,15 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      browserless: { condition: service_started }
+
+  browserless:
+    image: ghcr.io/browserless/chromium:latest
+    restart: unless-stopped
+    environment:
+      TOKEN: ${BROWSERLESS_TOKEN:-}
+    ports:
+      - '127.0.0.1:${BROWSERLESS_PORT:-3002}:3000'
 
   worker:
     build:

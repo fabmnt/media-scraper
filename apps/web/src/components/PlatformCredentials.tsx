@@ -8,6 +8,7 @@ import {
 } from '@media-scraper/shared';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
+import { CredentialLoginDialog } from './CredentialLoginDialog';
 
 const PLATFORM_DETAILS = {
   instagram: {
@@ -24,6 +25,7 @@ const PLATFORM_DETAILS = {
 export function PlatformCredentials({ platform }: { platform: Platform }) {
   const [cookies, setCookies] = useState('');
   const [fileError, setFileError] = useState<string>();
+  const [loginOpen, setLoginOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const fileSelection = useRef(0);
   const queryClient = useQueryClient();
@@ -125,6 +127,11 @@ export function PlatformCredentials({ platform }: { platform: Platform }) {
           value={cookies}
         />
         <div className="credential-actions">
+          {status.data?.interactiveLogin && (
+            <button onClick={() => setLoginOpen(true)} type="button">
+              Sign in with browser
+            </button>
+          )}
           <label className="file-button">
             Select cookies.txt
             <input
@@ -172,6 +179,16 @@ export function PlatformCredentials({ platform }: { platform: Platform }) {
             ` Last verified working ${new Date(session.detectedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}.`}
         </small>
       </div>
+      {loginOpen && (
+        <CredentialLoginDialog
+          onClose={() => setLoginOpen(false)}
+          onCompleted={() => {
+            setLoginOpen(false);
+            void queryClient.invalidateQueries({ queryKey });
+          }}
+          platform={platform}
+        />
+      )}
     </details>
   );
 }

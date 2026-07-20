@@ -11,19 +11,38 @@ import {
   platformCredentialFile,
   savePlatformCredential,
 } from '../platform-cookies.js';
+import {
+  cancelLoginSession,
+  pollLoginSession,
+  startLoginSession,
+  type BrowserLoginConfig,
+} from '../platform-login-sessions.js';
 
 interface CredentialRouteParams {
   platform: string;
 }
 
+interface LoginSessionRouteParams {
+  platform: string;
+  sessionId: string;
+}
+
 interface CredentialRoutesOptions {
+  browserLogin?: BrowserLoginConfig | undefined;
   credentialsRoot: string;
   db: Database;
 }
 
+class InteractiveLoginUnavailableError extends Error {
+  readonly statusCode = 501;
+  constructor() {
+    super('Interactive sign-in is not configured on this server');
+  }
+}
+
 export async function credentialRoutes(
   app: FastifyInstance,
-  { credentialsRoot, db }: CredentialRoutesOptions,
+  { browserLogin, credentialsRoot, db }: CredentialRoutesOptions,
 ) {
   app.get<{ Params: CredentialRouteParams }>('/:platform', async (request) => {
     const platform = platformSchema.parse(request.params.platform);
@@ -36,6 +55,7 @@ export async function credentialRoutes(
     ]);
     return {
       configured: Boolean(credential),
+      interactiveLogin: Boolean(browserLogin),
       session: sessionState
         ? {
             status: sessionState.status,
@@ -53,7 +73,11 @@ export async function credentialRoutes(
       const { cookies } = credentialInputSchema.parse(request.body);
       await savePlatformCredential(credentialsRoot, platform, cookies);
       await resetCredentialSession(db, platform);
-      return reply.send({ configured: true, session: null });
+      return reply.send({
+        configured: true,
+        interactiveLogin: Boolean(browserLogin),
+        session: null,
+      });
     },
   );
 
@@ -63,6 +87,48 @@ export async function credentialRoutes(
       const platform = platformSchema.parse(request.params.platform);
       await deletePlatformCredential(credentialsRoot, platform);
       await resetCredentialSession(db, platform);
+      return reply.code(204).send();
+    },
+  );
+
+  app.post<{ Params: CredentialRouteParams }>(
+    '/:platform/login-sessions',
+    async (request) => {
+      const platform = platformSchema.parse(request.params.platform);
+      if (!browserLogin) throw new InteractiveLoginUnavailableError();
+      const session = await startLoginSession(browserLogin, platform);
+      return {
+        id: session.id,
+        platform: session.platform,
+        liveUrl: session.liveUrl,
+        expiresAt: session.expiresAt.toISOString(),
+      };
+    },
+  );
+
+  app.get<{ Params: LoginSessionRouteParams }>(
+    '/:platform/login-sessions/:sessionId',
+    async (request) => {
+      platformSchema.parse(request.params.platform);
+      if (!browserLogin) throw new InteractiveLoginUnavailableError();
+      const result = await pollLoginSession(
+        browserLogin,
+        credentialsRoot,
+        request.params.sessionId,
+      );
+      if (result.status === 'completed' && result.platform) {
+        await resetCredentialSession(db, result.platform);
+      }
+      return { status: result.status };
+    },
+  );
+
+  app.delete<{ Params: LoginSessionRouteParams }>(
+    '/:platform/login-sessions/:sessionId',
+    async (request, reply) => {
+      platformSchema.parse(request.params.platform);
+      if (!browserLogin) throw new InteractiveLoginUnavailableError();
+      await cancelLoginSession(browserLogin, request.params.sessionId);
       return reply.code(204).send();
     },
   );

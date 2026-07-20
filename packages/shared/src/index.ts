@@ -101,6 +101,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 interface PlatformCredentialConfig {
   domain: string;
   fileName: string;
+  loginUrl: string;
   requiredCookies: readonly string[];
 }
 
@@ -108,16 +109,19 @@ export const PLATFORM_CREDENTIALS = {
   instagram: {
     domain: 'instagram.com',
     fileName: 'instagram.cookies.txt',
+    loginUrl: 'https://www.instagram.com/accounts/login/',
     requiredCookies: ['sessionid'],
   },
   facebook: {
     domain: 'facebook.com',
     fileName: 'facebook.cookies.txt',
+    loginUrl: 'https://www.facebook.com/login',
     requiredCookies: ['c_user', 'xs'],
   },
   tiktok: {
     domain: 'tiktok.com',
     fileName: 'tiktok.cookies.txt',
+    loginUrl: 'https://www.tiktok.com/login/',
     requiredCookies: ['sid_tt'],
   },
 } as const satisfies Record<Platform, PlatformCredentialConfig>;
@@ -374,7 +378,25 @@ export const credentialInputSchema = z.object({
 
 export const credentialStatusSchema = z.object({
   configured: z.boolean(),
+  interactiveLogin: z.boolean(),
   session: credentialSessionSchema.nullable(),
+});
+
+export const CREDENTIAL_LOGIN_SESSION_STATUSES = [
+  'pending',
+  'completed',
+  'expired',
+] as const;
+
+export const credentialLoginSessionSchema = z.object({
+  id: z.uuid(),
+  platform: platformSchema,
+  liveUrl: z.url(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const credentialLoginSessionStateSchema = z.object({
+  status: z.enum(CREDENTIAL_LOGIN_SESSION_STATUSES),
 });
 
 export function credentialSessionExpiredMessage(platform: Platform) {
@@ -387,6 +409,12 @@ export type CredentialSessionStatus = z.infer<
 export type CredentialSession = z.infer<typeof credentialSessionSchema>;
 export type CredentialInput = z.infer<typeof credentialInputSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
+export type CredentialLoginSession = z.infer<
+  typeof credentialLoginSessionSchema
+>;
+export type CredentialLoginSessionState = z.infer<
+  typeof credentialLoginSessionStateSchema
+>;
 export type Collection = z.infer<typeof collectionSchema>;
 
 export interface Page<T> {

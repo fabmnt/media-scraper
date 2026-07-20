@@ -99,6 +99,9 @@ const apiEnvironmentSchema = commonEnvironmentSchema
     // Railway injects PORT at runtime. Keep API_PORT available for local Docker
     // development, but prefer PORT when API_PORT is not explicitly configured.
     API_PORT: positiveInteger.optional(),
+    BROWSERLESS_PUBLIC_URL: optionalEnvironmentUrl,
+    BROWSERLESS_TOKEN: optionalEnvironmentString,
+    BROWSERLESS_URL: optionalEnvironmentUrl,
     COOKIE_SECURE: z.stringbool().default(false),
     PROFILE_DISCOVERY_CACHE_TTL_SECONDS: positiveInteger
       .max(MAX_PROFILE_DISCOVERY_CACHE_TTL_SECONDS)
@@ -108,7 +111,17 @@ const apiEnvironmentSchema = commonEnvironmentSchema
       .default(DEFAULT_PROFILE_DISCOVERY_TIMEOUT_MS),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
   })
-  .superRefine(validateStorageEnvironment);
+  .superRefine((config, context) => {
+    validateStorageEnvironment(config, context);
+    if (config.BROWSERLESS_PUBLIC_URL && !config.BROWSERLESS_URL) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'BROWSERLESS_URL is required when BROWSERLESS_PUBLIC_URL is set',
+        path: ['BROWSERLESS_URL'],
+      });
+    }
+  });
 
 const workerEnvironmentSchema = commonEnvironmentSchema
   .extend({
