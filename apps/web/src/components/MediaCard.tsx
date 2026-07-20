@@ -27,8 +27,13 @@ export function MediaCard({
 }) {
   const { bindVideo, videoRef } = useVideoVolume();
   const [assetIndex, setAssetIndex] = useState(0);
+  const [loadedAssetIds, setLoadedAssetIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
+  const isSelectedAssetLoading =
+    selectedAsset !== undefined && !loadedAssetIds.has(selectedAsset.id);
   const platformLabel =
     item.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item.platform;
 
@@ -45,6 +50,13 @@ export function MediaCard({
       (currentIndex) =>
         (currentIndex + direction + item.assets.length) % item.assets.length,
     );
+  }
+
+  function markAssetAsLoaded(assetId: string) {
+    setLoadedAssetIds((currentAssetIds) => {
+      if (currentAssetIds.has(assetId)) return currentAssetIds;
+      return new Set(currentAssetIds).add(assetId);
+    });
   }
 
   const { consumeSwipe, handleTouchEnd, handleTouchStart } = useHorizontalSwipe(
@@ -92,6 +104,8 @@ export function MediaCard({
           <img
             alt={item.caption ?? `${platformLabel} media`}
             loading="lazy"
+            onError={() => markAssetAsLoaded(selectedAsset.id)}
+            onLoad={() => markAssetAsLoaded(selectedAsset.id)}
             src={api.mediaUrl(selectedAsset.url)}
           />
         ) : selectedAsset ? (
@@ -99,6 +113,8 @@ export function MediaCard({
             controls
             key={selectedAsset.id}
             onClick={(event) => event.stopPropagation()}
+            onError={() => markAssetAsLoaded(selectedAsset.id)}
+            onLoadedData={() => markAssetAsLoaded(selectedAsset.id)}
             loop
             playsInline
             preload="metadata"
@@ -107,6 +123,13 @@ export function MediaCard({
           />
         ) : (
           <div className="empty-preview">No preview</div>
+        )}
+        {isSelectedAssetLoading && (
+          <div
+            aria-label="Loading media"
+            className="media-loading-skeleton"
+            role="status"
+          />
         )}
         <span className="platform">{platformLabel}</span>
         <label
