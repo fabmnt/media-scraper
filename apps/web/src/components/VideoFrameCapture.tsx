@@ -157,7 +157,6 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
     <div className="video-frame-preview">
       <video
         aria-label="Video preview"
-        autoPlay
         controls
         loop
         muted

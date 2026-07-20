@@ -4,7 +4,6 @@ import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
-const VIDEO_PRELOAD_ROOT_MARGIN = '200px';
 
 export function MediaCard({
   deleteDisabled,
@@ -25,8 +24,6 @@ export function MediaCard({
   onSelect: () => void;
   previewOpen: boolean;
 }) {
-  const cardRef = useRef<HTMLElement>(null);
-  const isVideoVisible = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [assetIndex, setAssetIndex] = useState(0);
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
@@ -37,35 +34,8 @@ export function MediaCard({
   }, [assetIndex, item.assets.length]);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (previewOpen) {
-      video.pause();
-    } else if (isVideoVisible.current) {
-      void video.play().catch(() => undefined);
-    }
+    if (previewOpen) videoRef.current?.pause();
   }, [previewOpen]);
-
-  useEffect(() => {
-    const card = cardRef.current;
-    const video = videoRef.current;
-    if (!card || !video) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry) return;
-        isVideoVisible.current = entry.isIntersecting;
-        if (entry.isIntersecting && !previewOpen) {
-          void video.play().catch(() => undefined);
-        } else {
-          video.pause();
-        }
-      },
-      { rootMargin: VIDEO_PRELOAD_ROOT_MARGIN },
-    );
-    observer.observe(card);
-    return () => observer.disconnect();
-  }, [previewOpen, selectedAsset?.id]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -84,7 +54,6 @@ export function MediaCard({
   return (
     <article
       aria-label={`Open media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
-      ref={cardRef}
       className={`media-card${isSelected ? ' selected' : ''}`}
       onClick={() => {
         if (consumeSwipe()) return;
@@ -124,7 +93,6 @@ export function MediaCard({
           />
         ) : selectedAsset ? (
           <video
-            autoPlay
             controls
             key={selectedAsset.id}
             onClick={(event) => event.stopPropagation()}
