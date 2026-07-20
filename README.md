@@ -135,6 +135,8 @@ Open the relevant platform access panel in the gallery and either paste a Cookie
 
 Each normalized credential is stored separately in a private Docker volume, mounted read-only by the worker, and never returned by the API or placed in queue payloads. A configured status only confirms that a credential is stored; platforms can invalidate sessions at any time.
 
+To make invalidation visible, the API and worker watch extractor output for authentication failures such as `401 Unauthorized`, "login required", and redirects to a login page. When one is detected while a credential is stored, the platform's session is recorded as expired in PostgreSQL: the dashboard shows a warning banner, the platform access panel switches to "Session expired" with the detection time, and failed collections and profile checks report a human-readable session-expired message instead of raw extractor output. Successful authenticated extractions record the session as verified working, so the indicator clears itself after the first successful run with fresh cookies. Rate limiting and checkpoint challenges are intentionally not treated as expirations. Saving or removing a credential resets its session state.
+
 Treat cookie files as passwords. Remove them from the application when they are no longer needed, and replace them after logging out, changing a password, or when the platform invalidates the session.
 
 Only collect media you are authorized to access. Preserve attribution, source links, privacy, copyright, and platform terms.

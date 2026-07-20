@@ -92,6 +92,12 @@ export type MediaGroupMode = z.infer<typeof mediaGroupModeSchema>;
 export type MediaSort = z.infer<typeof mediaSortSchema>;
 export type MediaMaintenanceType = z.infer<typeof mediaMaintenanceTypeSchema>;
 
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
+};
+
 interface PlatformCredentialConfig {
   domain: string;
   fileName: string;
@@ -347,6 +353,17 @@ export interface MediaItemGroups {
   nextGroupOffset: number | null;
 }
 
+export const CREDENTIAL_SESSION_STATUSES = ['valid', 'expired'] as const;
+export const credentialSessionStatusSchema = z.enum(
+  CREDENTIAL_SESSION_STATUSES,
+);
+
+export const credentialSessionSchema = z.object({
+  status: credentialSessionStatusSchema,
+  message: z.string().nullable(),
+  detectedAt: z.iso.datetime(),
+});
+
 export const credentialInputSchema = z.object({
   cookies: z
     .string()
@@ -357,8 +374,17 @@ export const credentialInputSchema = z.object({
 
 export const credentialStatusSchema = z.object({
   configured: z.boolean(),
+  session: credentialSessionSchema.nullable(),
 });
 
+export function credentialSessionExpiredMessage(platform: Platform) {
+  return `The ${PLATFORM_LABELS[platform]} session has expired or been revoked. Replace the stored cookies to continue collecting media.`;
+}
+
+export type CredentialSessionStatus = z.infer<
+  typeof credentialSessionStatusSchema
+>;
+export type CredentialSession = z.infer<typeof credentialSessionSchema>;
 export type CredentialInput = z.infer<typeof credentialInputSchema>;
 export type CredentialStatus = z.infer<typeof credentialStatusSchema>;
 export type Collection = z.infer<typeof collectionSchema>;

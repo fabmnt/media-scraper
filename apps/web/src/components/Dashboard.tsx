@@ -4,6 +4,7 @@ import { SUPPORTED_PLATFORMS } from '@media-scraper/shared';
 import { api } from '../api';
 import { AutomaticCollectionsPanel } from './AutomaticCollectionsPanel';
 import { CollectionForm } from './CollectionForm';
+import { CredentialSessionBanner } from './CredentialSessionBanner';
 import { Gallery } from './Gallery';
 import { PlatformCredentials } from './PlatformCredentials';
 import { ProfileArchiveForm } from './ProfileArchiveForm';
@@ -95,6 +96,8 @@ export function Dashboard() {
             you have saved.
           </p>
         </section>
+
+        <CredentialSessionBanner />
 
         <div
           aria-label="Dashboard sections"

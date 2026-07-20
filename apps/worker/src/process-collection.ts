@@ -2,10 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { access, mkdir, rm } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
-import { collections, type Database } from '@media-scraper/database';
-import { extractMedia } from '@media-scraper/extractors';
+import {
+  collections,
+  markCredentialSessionExpired,
+  markCredentialSessionValid,
+  type Database,
+} from '@media-scraper/database';
+import { extractMedia, isPlatformAuthFailure } from '@media-scraper/extractors';
 import type { MediaStorage } from '@media-scraper/storage';
 import {
+  credentialSessionExpiredMessage,
   PLATFORM_CREDENTIALS,
   type CollectionJobPayload,
 } from '@media-scraper/shared';
@@ -114,6 +120,7 @@ export async function processCollection(
   }, CLAIM_RENEWAL_INTERVAL_MS);
   claimRenewal.unref();
 
+  let hasCredential = false;
   let retainedPaths = new Set<string>();
   try {
     await mkdir(outputDirectory, { recursive: true });
@@ -121,7 +128,7 @@ export async function processCollection(
       credentialsRoot,
       PLATFORM_CREDENTIALS[job.platform].fileName,
     );
-    const hasCredential = await access(credentialPath)
+    hasCredential = await access(credentialPath)
       .then(() => true)
       .catch((error: NodeJS.ErrnoException) => {
         if (error.code === 'ENOENT') return false;
@@ -163,9 +170,26 @@ export async function processCollection(
       claimOwner,
       signal,
     ));
+    if (hasCredential) {
+      await markCredentialSessionValid(db, job.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
   } catch (error) {
+    const authFailure = hasCredential && isPlatformAuthFailure(error);
+    if (authFailure) {
+      await markCredentialSessionExpired(db, job.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
     const message = (
-      error instanceof Error ? error.message : 'Unknown extraction failure'
+      authFailure
+        ? credentialSessionExpiredMessage(job.platform)
+        : error instanceof Error
+          ? error.message
+          : 'Unknown extraction failure'
     ).slice(0, MAX_ERROR_LENGTH);
     await db
       .update(collections)

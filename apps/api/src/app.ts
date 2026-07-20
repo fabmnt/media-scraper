@@ -136,6 +136,7 @@ export async function buildApp(config: ApiConfig) {
   await app.register(credentialRoutes, {
     prefix: '/credentials',
     credentialsRoot: config.credentialsRoot,
+    db: database.db,
   });
   await app.register(collectionRoutes, {
     prefix: '/collections',
@@ -158,6 +159,7 @@ export async function buildApp(config: ApiConfig) {
     prefix: '/profiles',
     cacheTtlSeconds: config.profileDiscoveryCacheTtlSeconds,
     credentialsRoot: config.credentialsRoot,
+    db: database.db,
     redis,
     timeoutMs: config.profileDiscoveryTimeoutMs,
   });

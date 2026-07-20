@@ -332,6 +332,30 @@ footer {
 .credential-state.configured {
   color: var(--accent);
 }
+.credential-state.expired {
+  color: #ff8075;
+}
+.credential-session-warning {
+  color: #ff8075 !important;
+  border: 1px solid #ff8075;
+  padding: 12px 16px;
+  margin-top: 0;
+}
+.session-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 32px 0 0;
+  padding: 16px 24px;
+  background: var(--panel);
+  border: 1px solid #ff8075;
+  color: #ff8075;
+}
+.session-banner a {
+  flex-shrink: 0;
+  font-weight: 600;
+}
 .credentials-body {
   padding: 22px 24px 24px;
   border-top: 1px solid var(--line);

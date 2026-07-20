@@ -2,11 +2,17 @@ import type { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import {
   automaticProfiles,
+  markCredentialSessionExpired,
+  markCredentialSessionValid,
   profileBackfills,
   type Database,
 } from '@media-scraper/database';
-import { discoverProfileMedia } from '@media-scraper/extractors';
 import {
+  discoverProfileMedia,
+  isPlatformAuthFailure,
+} from '@media-scraper/extractors';
+import {
+  credentialSessionExpiredMessage,
   MAX_PROFILE_MEDIA,
   type CollectionJobPayload,
   type ProfileBackfillJobPayload,
@@ -75,6 +81,7 @@ export async function processProfileBackfill(
     return { collectionsQueued: 0, completed: false };
   }
 
+  let cookiesPath: string | undefined;
   try {
     const updatedAt = new Date();
     const startedAt = backfill.startedAt ?? updatedAt;
@@ -83,7 +90,7 @@ export async function processProfileBackfill(
       .set({ status: 'processing', startedAt, updatedAt })
       .where(eq(profileBackfills.id, backfill.id));
 
-    const cookiesPath = await profileCredentialPath(
+    cookiesPath = await profileCredentialPath(
       credentialsRoot,
       profile.platform,
     );
@@ -123,17 +130,33 @@ export async function processProfileBackfill(
       })
       .where(eq(profileBackfills.id, backfill.id));
 
+    if (cookiesPath) {
+      await markCredentialSessionValid(db, profile.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
     if (!completed) {
       await ensureProfileBackfillQueued(queue, backfill.id, nextPageNumber);
     }
     return { collectionsQueued, completed };
   } catch (error) {
     if (signal.aborted) throw error;
+    const authFailure =
+      cookiesPath !== undefined && isPlatformAuthFailure(error);
+    if (authFailure) {
+      await markCredentialSessionExpired(db, profile.platform).catch(
+        (stateError: unknown) =>
+          console.warn('Could not record credential session state', stateError),
+      );
+    }
     if (isFinalAttempt) {
       const message = (
-        error instanceof Error
-          ? error.message
-          : 'Unknown profile archive failure'
+        authFailure
+          ? credentialSessionExpiredMessage(profile.platform)
+          : error instanceof Error
+            ? error.message
+            : 'Unknown profile archive failure'
       ).slice(0, MAX_ERROR_LENGTH);
       await db
         .update(profileBackfills)
