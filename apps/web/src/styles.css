@@ -804,13 +804,20 @@ button:disabled {
   position: absolute;
   z-index: 1;
   inset: 0;
+  overflow: hidden;
+  background: #1a1c18;
+}
+.media-loading-skeleton::after {
+  position: absolute;
+  inset: 0;
+  content: '';
   background: linear-gradient(
-    110deg,
-    #1a1c18 8%,
-    #2a2d27 18%,
-    #1a1c18 33%
+    90deg,
+    transparent,
+    rgb(255 255 255 / 10%),
+    transparent
   );
-  background-size: 200% 100%;
+  transform: translateX(-100%);
   animation: media-skeleton-loading 1.2s linear infinite;
 }
 .platform {
@@ -842,7 +849,7 @@ button:disabled {
 }
 @keyframes media-skeleton-loading {
   to {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
 }
 .asset-count {
