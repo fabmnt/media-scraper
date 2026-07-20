@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type TouchEventHandler, useState } from 'react';
 import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const FRAME_IMAGE_MIME_TYPE = 'image/jpeg';
@@ -11,6 +11,8 @@ const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
 
 type VideoFrameCaptureProps = {
   fileName: string;
+  onTouchEnd?: TouchEventHandler<HTMLVideoElement>;
+  onTouchStart?: TouchEventHandler<HTMLVideoElement>;
   src: string;
 };
 
@@ -98,7 +100,12 @@ function downloadBlob(blob: Blob, fileName: string) {
   );
 }
 
-export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
+export function VideoFrameCapture({
+  fileName,
+  onTouchEnd,
+  onTouchStart,
+  src,
+}: VideoFrameCaptureProps) {
   const { bindVideo, videoRef } = useVideoVolume();
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -166,6 +173,8 @@ export function VideoFrameCapture({ fileName, src }: VideoFrameCaptureProps) {
           setDuration(Number.isFinite(videoDuration) ? videoDuration : 0);
           updateCurrentTime(event.currentTarget.currentTime);
         }}
+        onTouchEnd={onTouchEnd}
+        onTouchStart={onTouchStart}
         onTimeUpdate={(event) =>
           updateCurrentTime(event.currentTarget.currentTime)
         }

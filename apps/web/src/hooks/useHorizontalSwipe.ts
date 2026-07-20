@@ -20,6 +20,7 @@ export function useHorizontalSwipe({
   const didSwipe = useRef(false);
 
   function handleTouchStart(touch: TouchCoordinates | undefined) {
+    didSwipe.current = false;
     swipeStart.current = touch;
   }
 

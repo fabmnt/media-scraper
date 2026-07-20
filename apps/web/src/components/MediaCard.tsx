@@ -88,16 +88,16 @@ export function MediaCard({
     >
       <div
         className="preview"
-        onTouchEnd={(event) => {
-          const touch = event.changedTouches[0];
-          if (selectedAsset?.type === 'image') {
-            handleTouchEnd(touch);
+        onClick={(event) => {
+          if (consumeSwipe() || selectedAsset?.type === 'video') {
+            event.stopPropagation();
           }
         }}
+        onTouchEnd={(event) => {
+          handleTouchEnd(event.changedTouches[0]);
+        }}
         onTouchStart={(event) => {
-          if (selectedAsset?.type === 'image') {
-            handleTouchStart(event.touches[0]);
-          }
+          handleTouchStart(event.touches[0]);
         }}
       >
         {selectedAsset?.type === 'image' ? (
@@ -112,7 +112,6 @@ export function MediaCard({
           <video
             controls
             key={selectedAsset.id}
-            onClick={(event) => event.stopPropagation()}
             onError={() => markAssetAsLoaded(selectedAsset.id)}
             onLoadedData={() => markAssetAsLoaded(selectedAsset.id)}
             loop

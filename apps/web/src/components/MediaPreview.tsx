@@ -150,6 +150,12 @@ export function MediaPreview({
             <VideoFrameCapture
               fileName={asset.fileName}
               key={asset.id}
+              onTouchEnd={(event) => {
+                handleTouchEnd(event.changedTouches[0]);
+              }}
+              onTouchStart={(event) => {
+                handleTouchStart(event.touches[0]);
+              }}
               src={api.mediaUrl(asset.url)}
             />
           ) : (
