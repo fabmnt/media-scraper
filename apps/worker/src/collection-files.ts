@@ -87,7 +87,11 @@ export async function prepareMedia(
           `${basename(file.absolutePath)} exceeds the configured asset limit`,
         );
       }
-      const thumbnailFile = await createThumbnail(file, outputRoot, signal);
+      const thumbnailFile = await createThumbnail(
+        { ...file, durationSeconds: metadata.durationSeconds },
+        outputRoot,
+        signal,
+      );
       const thumbnail = thumbnailFile
         ? {
             ...thumbnailFile,

@@ -118,7 +118,11 @@ S3_FORCE_PATH_STYLE=false
 S3_PRESIGNED_URL_TTL_SECONDS=900
 ```
 
-Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API authenticates each media request, then redirects S3 previews and downloads to short-lived presigned URLs so media bytes bypass the web and backend proxy services. Configure the bucket to allow the web origin with `GET` and `HEAD` CORS access; this preserves browser video-frame export. Local assets are served by the API with private, immutable browser caching. Assets created before thumbnails were introduced continue to use their original file in the gallery until they are recollected or backfilled.
+Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API authenticates each media request, then redirects S3 previews and downloads to short-lived presigned URLs so media bytes bypass the web and backend proxy services. Configure the bucket to allow the web origin with `GET` and `HEAD` CORS access; this preserves browser video-frame export. Local assets are served by the API with private, immutable browser caching. Assets created before thumbnails were introduced can be backfilled without recollecting them. After deploying this version, run the worker command below once; it is safe to rerun and supports both local and S3 storage. It logs individual FFmpeg/download failures and exits non-zero if any assets could not be processed.
+
+```bash
+railway ssh --service backend pnpm --filter @media-scraper/worker thumbnails:backfill
+```
 
 After deploying and applying migrations, move existing local assets into the configured bucket with:
 

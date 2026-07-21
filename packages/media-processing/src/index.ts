@@ -4,10 +4,13 @@ import { basename, dirname, extname, join, relative } from 'node:path';
 
 const THUMBNAIL_MAX_DIMENSION = 480;
 const THUMBNAIL_TIMEOUT_MS = 30_000;
+const DEFAULT_VIDEO_THUMBNAIL_TIMESTAMP_SECONDS = 0;
+const PREFERRED_VIDEO_THUMBNAIL_TIMESTAMP_SECONDS = 1;
 const TERMINATION_GRACE_MS = 5_000;
 
 export interface MediaFile {
   absolutePath: string;
+  durationSeconds?: number | null;
   relativePath: string;
   type: 'image' | 'video';
 }
@@ -75,22 +78,30 @@ function runFfmpeg(
 }
 
 export async function createThumbnail(
-  file: Pick<MediaFile, 'absolutePath' | 'type'>,
+  file: Pick<MediaFile, 'absolutePath' | 'durationSeconds' | 'type'>,
   outputRoot: string,
   signal?: AbortSignal,
+  onFailure?: (error: unknown) => void,
 ): Promise<ThumbnailFile | undefined> {
   const outputPath = join(
     dirname(file.absolutePath),
     `.${basename(file.absolutePath, extname(file.absolutePath))}.thumbnail.jpg`,
   );
   const scaleFilter = `scale=w='min(${String(THUMBNAIL_MAX_DIMENSION)},iw)':h='min(${String(THUMBNAIL_MAX_DIMENSION)},ih)':force_original_aspect_ratio=decrease`;
+  const thumbnailTimestamp =
+    file.durationSeconds === null || file.durationSeconds === undefined
+      ? DEFAULT_VIDEO_THUMBNAIL_TIMESTAMP_SECONDS
+      : Math.min(
+          PREFERRED_VIDEO_THUMBNAIL_TIMESTAMP_SECONDS,
+          file.durationSeconds / 2,
+        );
 
   try {
     await mkdir(dirname(outputPath), { recursive: true });
     await runFfmpeg(
       [
         '-y',
-        ...(file.type === 'video' ? ['-ss', '1'] : []),
+        ...(file.type === 'video' ? ['-ss', String(thumbnailTimestamp)] : []),
         '-i',
         file.absolutePath,
         '-frames:v',
@@ -108,7 +119,8 @@ export async function createThumbnail(
       relativePath: relative(outputRoot, outputPath),
       type: 'image',
     };
-  } catch {
+  } catch (error) {
+    onFailure?.(error);
     await rm(outputPath, { force: true }).catch(() => undefined);
     return undefined;
   }
