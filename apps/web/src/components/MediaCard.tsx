@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -6,7 +6,7 @@ import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
 
-export function MediaCard({
+export const MediaCard = memo(function MediaCard({
   deleteDisabled,
   isDeleting,
   isSelected,
@@ -20,9 +20,9 @@ export function MediaCard({
   isDeleting: boolean;
   isSelected: boolean;
   item: MediaItem;
-  onDelete: () => void;
-  onPreview: () => void;
-  onSelect: () => void;
+  onDelete: (item: MediaItem) => void;
+  onPreview: (itemId: string) => void;
+  onSelect: (itemId: string) => void;
   previewOpen: boolean;
 }) {
   const { bindVideo, videoRef } = useVideoVolume();
@@ -72,7 +72,7 @@ export function MediaCard({
       className={`media-card${isSelected ? ' selected' : ''}`}
       onClick={() => {
         if (consumeSwipe()) return;
-        onPreview();
+        onPreview(item.id);
       }}
       onKeyDown={(event) => {
         if (
@@ -82,7 +82,7 @@ export function MediaCard({
           return;
         }
         event.preventDefault();
-        onPreview();
+        onPreview(item.id);
       }}
       tabIndex={0}
     >
@@ -103,6 +103,7 @@ export function MediaCard({
         {selectedAsset?.type === 'image' ? (
           <img
             alt={item.caption ?? `${platformLabel} media`}
+            decoding="async"
             loading="lazy"
             onError={() => markAssetAsLoaded(selectedAsset.id)}
             onLoad={() => markAssetAsLoaded(selectedAsset.id)}
@@ -136,7 +137,11 @@ export function MediaCard({
           className="media-selection-control"
           onClick={(event) => event.stopPropagation()}
         >
-          <input checked={isSelected} onChange={onSelect} type="checkbox" />
+          <input
+            checked={isSelected}
+            onChange={() => onSelect(item.id)}
+            type="checkbox"
+          />
         </label>
         {hasMultipleAssets && (
           <>
@@ -183,7 +188,7 @@ export function MediaCard({
           <button
             aria-label={`Preview media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
             className="preview-button"
-            onClick={onPreview}
+            onClick={() => onPreview(item.id)}
             title="Preview"
             type="button"
           >
@@ -202,11 +207,15 @@ export function MediaCard({
               Download{hasMultipleAssets ? ` ${assetIndex + 1}` : ''}
             </a>
           )}
-          <button disabled={deleteDisabled} onClick={onDelete} type="button">
+          <button
+            disabled={deleteDisabled}
+            onClick={() => onDelete(item)}
+            type="button"
+          >
             {isDeleting ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </div>
     </article>
   );
-}
+});

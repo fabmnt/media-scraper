@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
+import { useVirtualList } from '../hooks/useVirtualList';
+
+const MEDIA_SELECTOR_ITEM_HEIGHT = 88;
 
 export function MediaPreview({
   initialItemId,
@@ -22,13 +25,37 @@ export function MediaPreview({
   const [assetIndex, setAssetIndex] = useState(0);
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
-  const mediaSelectorItems = items.flatMap((mediaItem, mediaItemIndex) =>
-    mediaItem.assets.map((mediaAsset, mediaAssetIndex) => ({
-      asset: mediaAsset,
-      assetIndex: mediaAssetIndex,
-      item: mediaItem,
-      itemIndex: mediaItemIndex,
-    })),
+  const mediaSelectorItems = useMemo(
+    () =>
+      items.flatMap((mediaItem, mediaItemIndex) =>
+        mediaItem.assets.map((mediaAsset, mediaAssetIndex) => ({
+          asset: mediaAsset,
+          assetIndex: mediaAssetIndex,
+          item: mediaItem,
+          itemIndex: mediaItemIndex,
+        })),
+      ),
+    [items],
+  );
+  const selectedSelectorItemIndex = mediaSelectorItems.findIndex(
+    (selectorItem) =>
+      selectorItem.itemIndex === itemIndex &&
+      selectorItem.assetIndex === assetIndex,
+  );
+  const {
+    endIndex: selectorEndIndex,
+    listRef: selectorListRef,
+    onScroll: handleSelectorScroll,
+    scrollToIndex: scrollSelectorToIndex,
+    startIndex: selectorStartIndex,
+    totalHeight: selectorTotalHeight,
+  } = useVirtualList({
+    itemCount: mediaSelectorItems.length,
+    itemHeight: MEDIA_SELECTOR_ITEM_HEIGHT,
+  });
+  const visibleSelectorItems = mediaSelectorItems.slice(
+    selectorStartIndex,
+    selectorEndIndex,
   );
   const platformLabel =
     item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
@@ -80,6 +107,12 @@ export function MediaPreview({
       if (dialog?.open) dialog.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (selectedSelectorItemIndex >= 0) {
+      scrollSelectorToIndex(selectedSelectorItemIndex);
+    }
+  }, [scrollSelectorToIndex, selectedSelectorItemIndex]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -195,52 +228,73 @@ export function MediaPreview({
               <span>Media</span>
               <span>{mediaSelectorItems.length}</span>
             </header>
-            <div className="media-selector-list">
-              {mediaSelectorItems.map((selectorItem) => {
-                const isSelected =
-                  itemIndex === selectorItem.itemIndex &&
-                  assetIndex === selectorItem.assetIndex;
-                const selectorPlatformLabel =
-                  selectorItem.item.platform === 'manual'
-                    ? MANUAL_UPLOAD_LABEL
-                    : selectorItem.item.platform;
+            <div
+              className="media-selector-list"
+              onScroll={handleSelectorScroll}
+              ref={selectorListRef}
+            >
+              <div
+                className="media-selector-virtual-list"
+                style={{ height: selectorTotalHeight }}
+              >
+                <div
+                  className="media-selector-virtual-items"
+                  style={{
+                    transform: `translateY(${selectorStartIndex * MEDIA_SELECTOR_ITEM_HEIGHT}px)`,
+                  }}
+                >
+                  {visibleSelectorItems.map((selectorItem) => {
+                    const isSelected =
+                      itemIndex === selectorItem.itemIndex &&
+                      assetIndex === selectorItem.assetIndex;
+                    const selectorPlatformLabel =
+                      selectorItem.item.platform === 'manual'
+                        ? MANUAL_UPLOAD_LABEL
+                        : selectorItem.item.platform;
 
-                return (
-                  <button
-                    aria-current={isSelected ? 'true' : undefined}
-                    aria-label={`Show ${selectorItem.asset.type} ${selectorItem.assetIndex + 1} from ${selectorItem.item.authorName ?? 'Unknown creator'}`}
-                    className={`media-selector-item${isSelected ? ' selected' : ''}`}
-                    key={selectorItem.asset.id}
-                    onClick={() => {
-                      setItemIndex(selectorItem.itemIndex);
-                      setAssetIndex(selectorItem.assetIndex);
-                    }}
-                    type="button"
-                  >
-                    <span className="media-selector-thumbnail">
-                      {selectorItem.asset.type === 'image' ? (
-                        <img alt="" src={api.mediaUrl(selectorItem.asset.url)} />
-                      ) : (
-                        <video
-                          muted
-                          playsInline
-                          preload="metadata"
-                          src={api.mediaUrl(selectorItem.asset.url)}
-                        />
-                      )}
-                    </span>
-                    <span className="media-selector-details">
-                      <strong>
-                        {selectorItem.item.authorName ?? 'Unknown creator'}
-                      </strong>
-                      <span>
-                        {selectorPlatformLabel} · {selectorItem.asset.type}{' '}
-                        {selectorItem.assetIndex + 1}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
+                    return (
+                      <button
+                        aria-current={isSelected ? 'true' : undefined}
+                        aria-label={`Show ${selectorItem.asset.type} ${selectorItem.assetIndex + 1} from ${selectorItem.item.authorName ?? 'Unknown creator'}`}
+                        className={`media-selector-item${isSelected ? ' selected' : ''}`}
+                        key={selectorItem.asset.id}
+                        onClick={() => {
+                          setItemIndex(selectorItem.itemIndex);
+                          setAssetIndex(selectorItem.assetIndex);
+                        }}
+                        type="button"
+                      >
+                        <span className="media-selector-thumbnail">
+                          {selectorItem.asset.type === 'image' ? (
+                            <img
+                              alt=""
+                              decoding="async"
+                              loading="lazy"
+                              src={api.mediaUrl(selectorItem.asset.url)}
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className="media-selector-video-placeholder"
+                            >
+                              Video
+                            </span>
+                          )}
+                        </span>
+                        <span className="media-selector-details">
+                          <strong>
+                            {selectorItem.item.authorName ?? 'Unknown creator'}
+                          </strong>
+                          <span>
+                            {selectorPlatformLabel} · {selectorItem.asset.type}{' '}
+                            {selectorItem.assetIndex + 1}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </aside>
         </div>

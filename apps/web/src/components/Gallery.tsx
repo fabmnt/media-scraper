@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MANUAL_UPLOAD_LABEL,
@@ -297,11 +297,26 @@ export function Gallery() {
       queryClient.invalidateQueries({ queryKey: queryKeys.allMedia }),
   });
 
-  function deleteItem(item: MediaItem) {
-    if (window.confirm('Delete this item and its downloaded files?')) {
-      remove.mutate([item.id]);
-    }
-  }
+  const deleteMedia = remove.mutate;
+  const deleteItem = useCallback(
+    (item: MediaItem) => {
+      if (window.confirm('Delete this item and its downloaded files?')) {
+        deleteMedia([item.id]);
+      }
+    },
+    [deleteMedia],
+  );
+  const openPreview = useCallback((itemId: string) => {
+    setPreviewItemId(itemId);
+  }, []);
+  const toggleItemSelection = useCallback((itemId: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
+  }, []);
 
   function deleteSelectedItems() {
     const selectedItemIds = items
@@ -315,15 +330,6 @@ export function Gallery() {
     ) {
       remove.mutate(selectedItemIds);
     }
-  }
-
-  function toggleItemSelection(itemId: string) {
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(itemId)) next.delete(itemId);
-      else next.add(itemId);
-      return next;
-    });
   }
 
   function loadGroup(group: MediaItemGroup) {
@@ -372,9 +378,7 @@ export function Gallery() {
     ? currentLoadedPages.nextGroupOffset
     : (media.data?.nextGroupOffset ?? null);
   const items = groups.flatMap((group) => group.items);
-  const selectedItemCount = items.filter((item) =>
-    selectedIds.has(item.id),
-  ).length;
+  const selectedItemCount = selectedIds.size;
   const errorMessage =
     (media.error ?? remove.error ?? loadMore.error ?? loadMoreGroups.error)
       ?.message ?? deleteError;
@@ -527,9 +531,9 @@ export function Gallery() {
                         isSelected={selectedIds.has(item.id)}
                         item={item}
                         key={item.id}
-                        onDelete={() => deleteItem(item)}
-                        onPreview={() => setPreviewItemId(item.id)}
-                        onSelect={() => toggleItemSelection(item.id)}
+                        onDelete={deleteItem}
+                        onPreview={openPreview}
+                        onSelect={toggleItemSelection}
                         previewOpen={Boolean(previewItemId)}
                       />
                     ))}
