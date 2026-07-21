@@ -106,6 +106,7 @@ export async function buildApp(config: ApiConfig) {
   );
 
   app.setErrorHandler<ApiError>((error, request, reply) => {
+    reply.type('application/json');
     if (error instanceof ZodError) {
       return reply.code(400).send({
         message: 'Invalid request',

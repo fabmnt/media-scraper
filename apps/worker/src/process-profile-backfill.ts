@@ -98,7 +98,13 @@ export async function processProfileBackfill(
       cookiesPath,
       signal,
       MAX_PROFILE_MEDIA,
-      { includeStories: backfill.includeStories },
+      {
+        includeStories: backfill.includeStories,
+        onStoryError: (error) =>
+          console.warn(
+            `Profile archive ${backfill.id} story discovery skipped: ${error.message}`,
+          ),
+      },
     );
     signal.throwIfAborted();
     const collectionsQueued = await queueDiscoveredProfileMedia(

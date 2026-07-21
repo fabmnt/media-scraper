@@ -183,6 +183,7 @@ interface ProfileSource {
 
 interface ProfileDiscoveryOptions {
   includeStories?: boolean;
+  onStoryError?: (error: Error) => void;
 }
 
 function profileSourceCount(
@@ -591,7 +592,7 @@ export async function discoverProfileMedia(
   cookiesPath?: string,
   signal?: AbortSignal,
   pageSize: number = MAX_PROFILE_MEDIA,
-  { includeStories = false }: ProfileDiscoveryOptions = {},
+  { includeStories = false, onStoryError }: ProfileDiscoveryOptions = {},
 ): Promise<ProfileMediaResults> {
   const sourceCount = profileSourceCount(
     platform,
@@ -617,25 +618,33 @@ export async function discoverProfileMedia(
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
   const sourceResults = await Promise.all(
     profile.sources.map(async (source, index) => {
+      const sourceCursor = continuation.sources[index]!;
+      if (sourceCursor.completed) {
+        return { completed: true, entries: [], errors: [] };
+      }
+
       try {
         const messages = await extractProfileSource(
           platform,
           source,
-          continuation.sources[index]?.offset ?? 0,
+          sourceCursor.offset,
           sourcePageSize(source, pageSize),
           authenticationArguments,
           signal,
         );
+        const errors = messages.flatMap((message) =>
+          message[0] === GALLERY_ERROR_MESSAGE
+            ? [new Error(message[1].message)]
+            : [],
+        );
         return {
+          completed: source.kind === 'stories' && errors.length > 0,
           entries: normalizeSourcePage(messages, source, platform, username),
-          errors: messages.flatMap((message) =>
-            message[0] === GALLERY_ERROR_MESSAGE
-              ? [new Error(message[1].message)]
-              : [],
-          ),
+          errors,
         };
       } catch (error) {
         return {
+          completed: source.kind === 'stories',
           entries: [],
           errors: [
             error instanceof Error
@@ -650,7 +659,17 @@ export async function discoverProfileMedia(
   const sourcePageSizes = profile.sources.map((source) =>
     sourcePageSize(source, pageSize),
   );
-  const extractionError = sourceResults.flatMap((result) => result.errors)[0];
+  let extractionError: Error | undefined;
+  for (const [index, result] of sourceResults.entries()) {
+    const source = profile.sources[index]!;
+    for (const error of result.errors) {
+      if (source.kind === 'stories') {
+        onStoryError?.(error);
+      } else {
+        extractionError ??= error;
+      }
+    }
+  }
   if (extractionError) throw extractionError;
 
   const sourcePageKeys = sourcePages.map((entries) =>
@@ -679,10 +698,12 @@ export async function discoverProfileMedia(
   const selectedUrls = new Set(items.map((item) => item.sourceUrl));
   let hasContinuation = false;
   const nextSources = sourcePages.map((entries, index): ProfileSourceCursor => {
-    const current = continuation.sources[index] ?? {
-      offset: 0,
-      skipKeys: [],
-    };
+    const current = continuation.sources[index]!;
+    const result = sourceResults[index]!;
+    if (result.completed) {
+      return { ...current, completed: true, skipKeys: [] };
+    }
+
     const entryKeys = sourcePageKeys[index] ?? [];
     const emittedKeys = new Set(current.skipKeys);
     for (const [entryIndex, entry] of entries.entries()) {
@@ -708,6 +729,7 @@ export async function discoverProfileMedia(
       hasContinuation = true;
     }
     return {
+      completed: false,
       offset: current.offset + consumedEntries,
       skipKeys,
     };

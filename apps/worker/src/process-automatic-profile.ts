@@ -60,7 +60,13 @@ export async function processAutomaticProfile(
       cookiesPath,
       signal,
       MAX_PROFILE_MEDIA,
-      { includeStories: profile.includeStories },
+      {
+        includeStories: profile.includeStories,
+        onStoryError: (error) =>
+          console.warn(
+            `Automatic profile ${profile.id} story discovery skipped: ${error.message}`,
+          ),
+      },
     );
     signal.throwIfAborted();
     const queuedCollections = await queueDiscoveredProfileMedia(

@@ -9,6 +9,7 @@ import { z } from 'zod';
 const LEGACY_PROFILE_CURSOR_VERSION = 2;
 const PROFILE_CURSOR_VERSION = 3;
 const profileSourceCursorSchema = z.object({
+  completed: z.boolean().default(false),
   offset: z.number().int().nonnegative().safe(),
   skipKeys: z
     .array(z.string().regex(/^[A-Za-z0-9_-]{43}$/))
@@ -61,7 +62,11 @@ export function decodeProfileCursor(
       profileIdentifier: undefined,
       sources: Array.from(
         { length: context.sourceCount },
-        (): ProfileSourceCursor => ({ offset: 0, skipKeys: [] }),
+        (): ProfileSourceCursor => ({
+          completed: false,
+          offset: 0,
+          skipKeys: [],
+        }),
       ),
     };
   }
