@@ -288,7 +288,7 @@ async function profileSources(
         sources: [
           {
             kind: 'posts',
-            url: `https://www.tiktok.com/@${encodedUsername}/posts`,
+            url: `https://www.tiktok.com/@${encodedUsername}`,
             include: () => true,
           },
           ...(includeStories
