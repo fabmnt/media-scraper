@@ -10,6 +10,7 @@ const ALL_MEDIA_QUERY_KEY = ['media'] as const;
 export const queryKeys = {
   session: ['session'] as const,
   automaticProfiles: ['automatic-profiles'] as const,
+  profileCollectionProgress: ['profile-archives', 'progress'] as const,
   collections: ['collections'] as const,
   recentCollections: ['collections', 'recent'] as const,
   failedCollections: ['collections', 'failed'] as const,

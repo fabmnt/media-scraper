@@ -670,8 +670,71 @@ button:disabled {
   color: #ff8075 !important;
 }
 .jobs,
-.gallery-section {
+.gallery-section,
+.profile-collection-progress {
   padding: 76px 0 0;
+}
+.profile-collection-progress-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+.profile-collection-progress-item {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  min-width: 0;
+  padding: 20px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.collection-progress-circle {
+  position: relative;
+  flex: none;
+  width: 88px;
+  height: 88px;
+  display: grid;
+  place-items: center;
+}
+.collection-progress-circle svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.collection-progress-circle circle {
+  fill: none;
+  stroke-width: 7;
+}
+.collection-progress-track {
+  stroke: #34382f;
+}
+.collection-progress-value {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 240ms ease;
+}
+.collection-progress-circle > strong {
+  font:
+    700 18px 'DM Mono',
+    monospace;
+}
+.profile-collection-progress-copy {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+.profile-collection-progress-copy > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-collection-progress-copy small {
+  color: var(--muted);
+  font-size: 11px;
 }
 .job-list {
   border-top: 1px solid var(--line);

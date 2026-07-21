@@ -331,9 +331,32 @@ export const profileArchiveSchema = z.object({
   backfill: profileBackfillSchema,
 });
 
+export const profileCollectionProgressSchema = z.object({
+  profile: z.object({
+    id: z.uuid(),
+    platform: platformSchema,
+    username: z.string(),
+  }),
+  backfill: z.object({
+    id: z.uuid(),
+    status: profileBackfillStatusSchema,
+    itemsDiscovered: z.number().int().nonnegative(),
+    collectionsQueued: z.number().int().nonnegative(),
+  }),
+  collections: z.object({
+    queued: z.number().int().nonnegative(),
+    processing: z.number().int().nonnegative(),
+    completed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+});
+
 export type ProfileBackfillStatus = z.infer<typeof profileBackfillStatusSchema>;
 export type ProfileBackfill = z.infer<typeof profileBackfillSchema>;
 export type ProfileArchive = z.infer<typeof profileArchiveSchema>;
+export type ProfileCollectionProgress = z.infer<
+  typeof profileCollectionProgressSchema
+>;
 export interface ProfileBackfillJobPayload {
   backfillId: string;
   pageNumber: number;

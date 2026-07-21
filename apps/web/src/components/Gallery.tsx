@@ -16,6 +16,7 @@ import { api } from '../api';
 import { queryKeys } from '../query-keys';
 import { MediaCard } from './MediaCard';
 import { MediaPreview } from './MediaPreview';
+import { ProfileCollectionProgress } from './ProfileCollectionProgress';
 
 const SEARCH_DEBOUNCE_MS = 350;
 const GALLERY_QUERY_PARAMETER = {
@@ -385,6 +386,7 @@ export function Gallery() {
 
   return (
     <>
+      <ProfileCollectionProgress />
       <section className="gallery-section">
         <div className="section-heading gallery-heading">
           <div>

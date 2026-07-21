@@ -15,6 +15,7 @@ import type {
   Page,
   Platform,
   ProfileArchive,
+  ProfileCollectionProgress,
   ProfileLookupInput,
   ProfileMediaResults,
   UpdateAutomaticProfileInput,
@@ -121,6 +122,8 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     }),
+  listProfileCollectionProgress: () =>
+    request<ProfileCollectionProgress[]>('/profile-archives/progress'),
   updateAutomaticProfile: (id: string, input: UpdateAutomaticProfileInput) =>
     request<AutomaticProfile>(`/automatic-profiles/${id}`, {
       method: 'PATCH',

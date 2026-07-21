@@ -1,15 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { Queue } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   createProfileArchiveSchema,
   type AutomaticProfileJobPayload,
   type ProfileArchive,
   type ProfileBackfillJobPayload,
+  type ProfileCollectionProgress,
 } from '@media-scraper/shared';
 import {
   automaticProfiles,
+  collections,
   profileBackfills,
   type Database,
 } from '@media-scraper/database';
@@ -39,6 +41,14 @@ class ProfileArchiveQueueError extends Error {
 }
 
 const profileArchiveParamsSchema = z.object({ id: z.uuid() });
+const ACTIVE_BACKFILL_STATUSES = new Set(['queued', 'processing']);
+
+const collectionStatusCount = (
+  status: 'queued' | 'processing' | 'completed' | 'failed',
+) =>
+  sql<number>`count(${collections.id}) filter (where ${collections.status} = ${status})`.mapWith(
+    Number,
+  );
 
 function isUniqueViolation(error: unknown) {
   return (
@@ -57,6 +67,63 @@ export async function profileArchiveRoutes(
     profileBackfillQueue,
   }: ProfileArchiveRoutesOptions,
 ) {
+  app.get('/progress', async (): Promise<ProfileCollectionProgress[]> => {
+    const rows = await db
+      .select({
+        backfillId: profileBackfills.id,
+        backfillStatus: profileBackfills.status,
+        collectionsQueued: profileBackfills.collectionsQueued,
+        itemsDiscovered: profileBackfills.itemsDiscovered,
+        profileId: automaticProfiles.id,
+        platform: automaticProfiles.platform,
+        username: automaticProfiles.username,
+        completedCollections: collectionStatusCount('completed'),
+        failedCollections: collectionStatusCount('failed'),
+        processingCollections: collectionStatusCount('processing'),
+        queuedCollections: collectionStatusCount('queued'),
+      })
+      .from(profileBackfills)
+      .innerJoin(
+        automaticProfiles,
+        eq(profileBackfills.automaticProfileId, automaticProfiles.id),
+      )
+      .leftJoin(
+        collections,
+        and(
+          eq(collections.automaticProfileId, automaticProfiles.id),
+          eq(collections.origin, 'automatic'),
+        ),
+      )
+      .groupBy(profileBackfills.id, automaticProfiles.id)
+      .orderBy(desc(profileBackfills.createdAt));
+
+    return rows
+      .filter(
+        (row) =>
+          ACTIVE_BACKFILL_STATUSES.has(row.backfillStatus) ||
+          row.queuedCollections + row.processingCollections > 0,
+      )
+      .map((row) => ({
+        profile: {
+          id: row.profileId,
+          platform: row.platform,
+          username: row.username,
+        },
+        backfill: {
+          id: row.backfillId,
+          status: row.backfillStatus,
+          itemsDiscovered: row.itemsDiscovered,
+          collectionsQueued: row.collectionsQueued,
+        },
+        collections: {
+          queued: row.queuedCollections,
+          processing: row.processingCollections,
+          completed: row.completedCollections,
+          failed: row.failedCollections,
+        },
+      }));
+  });
+
   app.post('/', async (request, reply): Promise<ProfileArchive> => {
     const input = createProfileArchiveSchema.parse(request.body);
     let created: {
