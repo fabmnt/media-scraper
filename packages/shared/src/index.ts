@@ -94,6 +94,7 @@ export const STORY_SUPPORTED_PLATFORMS: readonly Platform[] = [
   'instagram',
   'tiktok',
 ];
+export const HIGHLIGHT_SUPPORTED_PLATFORMS: readonly Platform[] = ['instagram'];
 export type CollectionStatus = z.infer<typeof collectionStatusSchema>;
 export type CollectionOrigin = z.infer<typeof collectionOriginSchema>;
 export type MediaType = z.infer<typeof mediaTypeSchema>;
@@ -186,16 +187,29 @@ const automaticCollectionIntervalSchema = z.coerce
   .min(MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES)
   .max(MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES);
 
-export const profileLookupSchema = z.object({
-  platform: platformSchema,
-  username: profileUsernameSchema,
-  cursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).optional(),
-});
+export const profileLookupSchema = z
+  .object({
+    platform: platformSchema,
+    username: profileUsernameSchema,
+    cursor: z.string().max(MAX_PROFILE_CURSOR_LENGTH).optional(),
+    includeHighlights: z.boolean().default(false),
+  })
+  .refine(
+    (input) =>
+      !input.includeHighlights ||
+      HIGHLIGHT_SUPPORTED_PLATFORMS.includes(input.platform),
+    {
+      message: 'Story Highlights are only supported for Instagram profiles',
+      path: ['includeHighlights'],
+    },
+  );
 
 export const profileMediaSchema = z.object({
   id: z.string().min(1),
   platform: platformSchema,
+  sourceKind: z.enum(['posts', 'reels', 'stories', 'highlights']),
   sourceUrl: z.url(),
+  sourceVersion: z.string().min(1).max(200).nullable(),
   thumbnailUrl: z.url().nullable(),
   caption: z.string().nullable(),
   publishedAt: z.iso.datetime().nullable(),
@@ -225,6 +239,7 @@ export const createAutomaticProfileSchema = z
     username: profileUsernameSchema,
     intervalMinutes: automaticCollectionIntervalSchema,
     includeStories: z.boolean().default(false),
+    includeHighlights: z.boolean().default(false),
   })
   .refine(
     (input) =>
@@ -233,6 +248,15 @@ export const createAutomaticProfileSchema = z
     {
       message: 'Stories are only supported for Instagram and TikTok profiles',
       path: ['includeStories'],
+    },
+  )
+  .refine(
+    (input) =>
+      !input.includeHighlights ||
+      HIGHLIGHT_SUPPORTED_PLATFORMS.includes(input.platform),
+    {
+      message: 'Story Highlights are only supported for Instagram profiles',
+      path: ['includeHighlights'],
     },
   );
 
@@ -243,12 +267,14 @@ export const updateAutomaticProfileSchema = z
     enabled: z.boolean().optional(),
     intervalMinutes: automaticCollectionIntervalSchema.optional(),
     includeStories: z.boolean().optional(),
+    includeHighlights: z.boolean().optional(),
   })
   .refine(
     (input) =>
       input.enabled !== undefined ||
       input.intervalMinutes !== undefined ||
-      input.includeStories !== undefined,
+      input.includeStories !== undefined ||
+      input.includeHighlights !== undefined,
     'At least one automatic profile setting is required',
   );
 
@@ -258,6 +284,7 @@ export const automaticProfileSchema = z.object({
   username: z.string(),
   intervalMinutes: automaticCollectionIntervalSchema,
   includeStories: z.boolean(),
+  includeHighlights: z.boolean(),
   enabled: z.boolean(),
   lastCheckedAt: z.iso.datetime().nullable(),
   lastSuccessAt: z.iso.datetime().nullable(),
@@ -288,6 +315,7 @@ export const profileBackfillSchema = z.object({
   automaticProfileId: z.uuid(),
   status: profileBackfillStatusSchema,
   includeStories: z.boolean(),
+  includeHighlights: z.boolean(),
   pageNumber: z.number().int().nonnegative(),
   itemsDiscovered: z.number().int().nonnegative(),
   collectionsQueued: z.number().int().nonnegative(),

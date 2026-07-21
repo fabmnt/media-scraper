@@ -4,6 +4,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   createAutomaticProfileSchema,
+  HIGHLIGHT_SUPPORTED_PLATFORMS,
   STORY_SUPPORTED_PLATFORMS,
   updateAutomaticProfileSchema,
   type AutomaticProfileJobPayload,
@@ -38,7 +39,7 @@ class AutomaticProfileQueueError extends Error {
   readonly statusCode = 503;
 }
 
-class AutomaticProfileStoriesUnsupportedError extends Error {
+class AutomaticProfileOptionUnsupportedError extends Error {
   readonly statusCode = 400;
 }
 
@@ -117,8 +118,16 @@ export async function automaticProfileRoutes(
       input.includeStories &&
       !STORY_SUPPORTED_PLATFORMS.includes(existingProfile.platform)
     ) {
-      throw new AutomaticProfileStoriesUnsupportedError(
+      throw new AutomaticProfileOptionUnsupportedError(
         'Stories are only supported for Instagram and TikTok profiles',
+      );
+    }
+    if (
+      input.includeHighlights &&
+      !HIGHLIGHT_SUPPORTED_PLATFORMS.includes(existingProfile.platform)
+    ) {
+      throw new AutomaticProfileOptionUnsupportedError(
+        'Story Highlights are only supported for Instagram profiles',
       );
     }
 
@@ -128,7 +137,8 @@ export async function automaticProfileRoutes(
         ...input,
         ...(input.enabled === true ||
         input.intervalMinutes !== undefined ||
-        input.includeStories !== undefined
+        input.includeStories !== undefined ||
+        input.includeHighlights !== undefined
           ? { lastError: null, retryAt: null }
           : {}),
         updatedAt: new Date(),

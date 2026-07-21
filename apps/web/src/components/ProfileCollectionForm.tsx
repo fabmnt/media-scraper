@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  HIGHLIGHT_SUPPORTED_PLATFORMS,
   MAX_COLLECTION_BATCH_SIZE,
   SUPPORTED_PLATFORMS,
   type Platform,
@@ -13,6 +14,7 @@ import { queryKeys } from '../query-keys';
 export function ProfileCollectionForm() {
   const [platform, setPlatform] = useState<Platform>('instagram');
   const [username, setUsername] = useState('');
+  const [includeHighlights, setIncludeHighlights] = useState(false);
   const [media, setMedia] = useState<ProfileMedia[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [activeLookup, setActiveLookup] = useState<
@@ -27,7 +29,11 @@ export function ProfileCollectionForm() {
       if (input.cursor) return;
       setMedia([]);
       setNextCursor(null);
-      setActiveLookup({ platform: input.platform, username: input.username });
+      setActiveLookup({
+        platform: input.platform,
+        username: input.username,
+        includeHighlights: input.includeHighlights,
+      });
       setSelectedUrls([]);
       setQueueMessage('');
     },
@@ -78,9 +84,15 @@ export function ProfileCollectionForm() {
   const selectionLimitReached =
     selectedUrls.length >= MAX_COLLECTION_BATCH_SIZE;
 
+  const supportsHighlights = HIGHLIGHT_SUPPORTED_PLATFORMS.includes(platform);
+
   function findProfile(event: FormEvent) {
     event.preventDefault();
-    discovery.mutate({ platform, username });
+    discovery.mutate({
+      platform,
+      username,
+      includeHighlights: supportsHighlights && includeHighlights,
+    });
   }
 
   function loadMore() {
@@ -114,7 +126,13 @@ export function ProfileCollectionForm() {
         <form onSubmit={findProfile}>
           <select
             aria-label="Profile platform"
-            onChange={(event) => setPlatform(event.target.value as Platform)}
+            onChange={(event) => {
+              const nextPlatform = event.target.value as Platform;
+              setPlatform(nextPlatform);
+              if (!HIGHLIGHT_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
+                setIncludeHighlights(false);
+              }
+            }}
             value={platform}
           >
             {SUPPORTED_PLATFORMS.map((item) => (
@@ -132,6 +150,16 @@ export function ProfileCollectionForm() {
             required
             value={username}
           />
+          {supportsHighlights && (
+            <label className="automatic-story-toggle">
+              <input
+                checked={includeHighlights}
+                onChange={(event) => setIncludeHighlights(event.target.checked)}
+                type="checkbox"
+              />
+              Include Story Highlights
+            </label>
+          )}
           <button disabled={discovery.isPending} type="submit">
             {discovery.isPending ? 'Loading…' : 'Find media'}
           </button>

@@ -6,23 +6,37 @@ import {
 } from '@media-scraper/shared';
 import { z } from 'zod';
 
-const PROFILE_CURSOR_VERSION = 2;
+const LEGACY_PROFILE_CURSOR_VERSION = 2;
+const PROFILE_CURSOR_VERSION = 3;
 const profileSourceCursorSchema = z.object({
   offset: z.number().int().nonnegative().safe(),
   skipKeys: z
     .array(z.string().regex(/^[A-Za-z0-9_-]{43}$/))
     .max(PROFILE_DISCOVERY_CACHE_ITEMS),
 });
-const profileCursorSchema = z.object({
-  version: z.literal(PROFILE_CURSOR_VERSION),
+const profileCursorFields = {
   platform: platformSchema,
   username: z.string().min(1).max(100),
   profileIdentifier: z
     .string()
     .regex(/^id:\d+$/)
     .optional(),
-  sources: z.array(profileSourceCursorSchema).min(1).max(3),
+  sources: z.array(profileSourceCursorSchema).min(1).max(4),
+};
+const legacyProfileCursorSchema = z.object({
+  version: z.literal(LEGACY_PROFILE_CURSOR_VERSION),
+  ...profileCursorFields,
 });
+const profileCursorSchema = z.object({
+  version: z.literal(PROFILE_CURSOR_VERSION),
+  includeHighlights: z.boolean(),
+  includeStories: z.boolean(),
+  ...profileCursorFields,
+});
+const decodableProfileCursorSchema = z.union([
+  legacyProfileCursorSchema,
+  profileCursorSchema,
+]);
 
 export type ProfileSourceCursor = z.infer<typeof profileSourceCursorSchema>;
 
@@ -31,6 +45,8 @@ export class InvalidProfileCursorError extends Error {
 }
 
 interface ProfileCursorContext {
+  includeHighlights: boolean;
+  includeStories: boolean;
   platform: Platform;
   username: string;
   sourceCount: number;
@@ -51,13 +67,18 @@ export function decodeProfileCursor(
   }
 
   try {
-    const payload = profileCursorSchema.parse(
+    const payload = decodableProfileCursorSchema.parse(
       JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')),
     );
     if (
       payload.platform !== context.platform ||
       payload.username !== context.username ||
-      payload.sources.length !== context.sourceCount
+      payload.sources.length !== context.sourceCount ||
+      (payload.version === LEGACY_PROFILE_CURSOR_VERSION &&
+        context.includeHighlights) ||
+      (payload.version === PROFILE_CURSOR_VERSION &&
+        (payload.includeStories !== context.includeStories ||
+          payload.includeHighlights !== context.includeHighlights))
     ) {
       throw new Error('Cursor does not match this profile');
     }

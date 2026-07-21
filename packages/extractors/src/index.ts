@@ -65,6 +65,7 @@ interface GalleryDlMetadata {
   id?: string | number;
   post_id?: string | number;
   shortcode?: string;
+  type?: string;
   username?: string;
   fullname?: string;
   description?: string;
@@ -370,9 +371,9 @@ async function extractWithGalleryDl(
   }
 
   const metadata = await readGalleryDlMetadata(outputDirectory);
-  const sourceIdentifier = metadata.find(
-    (item) => item.shortcode ?? item.post_id ?? item.id,
-  );
+  const sourceIdentifier =
+    metadata.find((item) => item.type === 'highlight' && item.post_id) ??
+    metadata.find((item) => item.shortcode ?? item.post_id ?? item.id);
   const author = metadata.find((item) => item.username ?? item.fullname);
   const text = metadata.find(
     (item) => item.description ?? item.caption ?? item.title,
@@ -390,10 +391,11 @@ async function extractWithGalleryDl(
   return [
     {
       sourceId: String(
-        sourceIdentifier?.shortcode ??
-          sourceIdentifier?.post_id ??
-          sourceIdentifier?.id ??
-          sourceIdForUrl(url),
+        (sourceIdentifier?.type === 'highlight'
+          ? sourceIdentifier.post_id
+          : (sourceIdentifier?.shortcode ??
+            sourceIdentifier?.post_id ??
+            sourceIdentifier?.id)) ?? sourceIdForUrl(url),
       ),
       sourceUrl: url,
       authorName: author?.username ?? author?.fullname ?? null,

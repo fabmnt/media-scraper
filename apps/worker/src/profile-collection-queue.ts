@@ -83,6 +83,7 @@ export async function queueDiscoveredProfileMedia(
               platform: sql<Platform>`${collections.platform}`,
               sourceId: collections.discoveredSourceId,
               sourceUrl: sql<string>`${collections.sourceUrl}`,
+              sourceVersion: collections.discoveredSourceVersion,
               status: collections.status,
             })
             .from(collections)
@@ -113,6 +114,45 @@ export async function queueDiscoveredProfileMedia(
     await queueCollections(collectionQueue, failedAutomaticCollections, db);
   }
 
+  const itemsBySourceId = new Map(items.map((item) => [item.id, item]));
+  const refreshedHighlightCollections = (
+    await Promise.all(
+      collectionRows.flatMap((collection) => {
+        const item = collection.sourceId
+          ? itemsBySourceId.get(collection.sourceId)
+          : undefined;
+        if (
+          collection.origin !== 'automatic' ||
+          collection.status !== 'completed' ||
+          item?.sourceKind !== 'highlights' ||
+          collection.sourceVersion === item.sourceVersion
+        ) {
+          return [];
+        }
+        return db
+          .update(collections)
+          .set({
+            discoveredSourceVersion: item.sourceVersion,
+            errorMessage: null,
+            status: 'queued',
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(collections.id, collection.id),
+              eq(collections.status, 'completed'),
+            ),
+          )
+          .returning({
+            id: collections.id,
+            platform: sql<Platform>`${collections.platform}`,
+            sourceUrl: sql<string>`${collections.sourceUrl}`,
+          });
+      }),
+    )
+  ).flat();
+  await queueCollections(collectionQueue, refreshedHighlightCollections, db);
+
   const knownSourceIds = new Set([
     ...collectedRows.map((item) => item.sourceId),
     ...collectionRows.flatMap((item) => (item.sourceId ? [item.sourceId] : [])),
@@ -127,6 +167,7 @@ export async function queueDiscoveredProfileMedia(
       id: randomUUID(),
       automaticProfileId: profile.id,
       discoveredSourceId: item.id,
+      discoveredSourceVersion: item.sourceVersion,
       origin: 'automatic' as const,
       platform: profile.platform,
       sourceUrl: item.sourceUrl,
@@ -145,5 +186,9 @@ export async function queueDiscoveredProfileMedia(
           });
   await queueCollections(collectionQueue, pendingCollections, db);
 
-  return failedAutomaticCollections.length + pendingCollections.length;
+  return (
+    failedAutomaticCollections.length +
+    refreshedHighlightCollections.length +
+    pendingCollections.length
+  );
 }

@@ -12,7 +12,7 @@ import {
 import { InvalidProfileCursorError } from '@media-scraper/extractors';
 import { z } from 'zod';
 
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 6;
 const CACHE_KEY_PREFIX = `profile-discovery:v${String(CACHE_VERSION)}`;
 const cacheCursorSchema = z.object({
   version: z.literal(CACHE_VERSION),
@@ -22,6 +22,7 @@ const cacheCursorSchema = z.object({
 const cachedSnapshotSchema = z.object({
   platform: platformSchema,
   username: z.string().min(1).max(100),
+  includeHighlights: z.boolean(),
   credentialVersion: z.string().min(1).max(200),
   items: z.array(profileMediaSchema).max(PROFILE_DISCOVERY_CACHE_ITEMS),
   sourceCursor: z.string().max(MAX_PROFILE_SOURCE_CURSOR_LENGTH).nullable(),
@@ -31,7 +32,7 @@ const cachedSnapshotSchema = z.object({
 type CachedSnapshot = z.infer<typeof cachedSnapshotSchema>;
 type SnapshotIdentity = Pick<
   CachedSnapshot,
-  'credentialVersion' | 'platform' | 'username'
+  'credentialVersion' | 'includeHighlights' | 'platform' | 'username'
 >;
 type SnapshotResult = { id: string; snapshot: CachedSnapshot };
 type SnapshotLoader = (
@@ -102,6 +103,7 @@ export class ProfileDiscoveryCache {
       credentialVersion,
       platform: input.platform,
       username: input.username,
+      includeHighlights: input.includeHighlights,
     };
     if (input.cursor === undefined) {
       const lookupKey = this.lookupKey(identity);
@@ -302,6 +304,7 @@ export class ProfileDiscoveryCache {
     if (
       snapshot.platform !== identity.platform ||
       snapshot.username !== identity.username ||
+      snapshot.includeHighlights !== identity.includeHighlights ||
       snapshot.credentialVersion !== identity.credentialVersion
     ) {
       throw invalidCursor('The profile cursor does not match this profile.');
@@ -314,6 +317,7 @@ export class ProfileDiscoveryCache {
         JSON.stringify({
           platform: identity.platform,
           username: identity.username,
+          includeHighlights: identity.includeHighlights,
           credentialVersion: identity.credentialVersion,
         }),
       )

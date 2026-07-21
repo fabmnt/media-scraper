@@ -93,6 +93,7 @@ export async function processProfileBackfill(
         platform: profile.platform,
         username: profile.username,
         cursor: backfill.cursor ?? undefined,
+        includeHighlights: backfill.includeHighlights,
       },
       cookiesPath,
       signal,

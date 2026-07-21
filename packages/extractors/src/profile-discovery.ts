@@ -32,6 +32,9 @@ const GALLERY_DIRECTORY_MESSAGE = 2;
 const GALLERY_URL_MESSAGE = 3;
 const GALLERY_ERROR_MESSAGE = -1;
 const INSTAGRAM_STORIES_SPLIT_OPTION = 'extractor.instagram.stories.split=true';
+const INSTAGRAM_HIGHLIGHTS_PATH = 'highlights';
+// gallery-dl retrieves Highlight reels in batches of five; fetch one batch per lookup.
+const MAX_HIGHLIGHTS_PER_DISCOVERY_PAGE = 4;
 
 const optionalString = z.string().optional().catch(undefined);
 const optionalIdentifier = z
@@ -58,6 +61,7 @@ const galleryMetadataSchema = z.looseObject({
   description: optionalString,
   display_url: optionalString,
   fullname: optionalString,
+  highlight_title: optionalString,
   id: optionalIdentifier,
   imagePost: z
     .looseObject({ images: z.array(imageSchema).catch([]) })
@@ -168,7 +172,7 @@ async function instagramProfileId(username: string, signal?: AbortSignal) {
   throw new Error('Instagram profile ID was not found');
 }
 
-type ProfileSourceKind = 'posts' | 'reels' | 'stories';
+type ProfileSourceKind = 'posts' | 'reels' | 'stories' | 'highlights';
 
 interface ProfileSource {
   kind: ProfileSourceKind;
@@ -181,10 +185,19 @@ interface ProfileDiscoveryOptions {
   includeStories?: boolean;
 }
 
-function profileSourceCount(platform: Platform, includeStories: boolean) {
+function profileSourceCount(
+  platform: Platform,
+  includeStories: boolean,
+  includeHighlights: boolean,
+) {
   const baseSourceCount = platform === 'instagram' ? 2 : 1;
   const supportsStories = platform === 'instagram' || platform === 'tiktok';
-  return baseSourceCount + Number(includeStories && supportsStories);
+  const supportsHighlights = platform === 'instagram';
+  return (
+    baseSourceCount +
+    Number(includeStories && supportsStories) +
+    Number(includeHighlights && supportsHighlights)
+  );
 }
 
 async function profileSources(
@@ -192,6 +205,7 @@ async function profileSources(
   username: string,
   profileIdentifier: string | undefined,
   includeStories: boolean,
+  includeHighlights: boolean,
   signal?: AbortSignal,
 ): Promise<{
   profileIdentifier: string | undefined;
@@ -228,6 +242,15 @@ async function profileSources(
                   kind: 'stories' as const,
                   options: [INSTAGRAM_STORIES_SPLIT_OPTION],
                   url: `https://www.instagram.com/stories/${identifier}/`,
+                  include: () => true,
+                },
+              ]
+            : []),
+          ...(includeHighlights
+            ? [
+                {
+                  kind: 'highlights' as const,
+                  url: `https://www.instagram.com/${identifier}/${INSTAGRAM_HIGHLIGHTS_PATH}/`,
                   include: () => true,
                 },
               ]
@@ -295,6 +318,17 @@ function sourceDetails(
           ? {
               id,
               sourceUrl: `https://www.instagram.com/stories/${encodeURIComponent(metadata.username ?? username)}/${id}/`,
+            }
+          : undefined;
+      }
+      if (source.kind === 'highlights') {
+        const id = metadata.post_id ?? metadata.id;
+        return id
+          ? {
+              id,
+              sourceUrl:
+                metadata.post_url ??
+                `https://www.instagram.com/stories/${INSTAGRAM_HIGHLIGHTS_PATH}/${id}/`,
             }
           : undefined;
       }
@@ -368,6 +402,12 @@ function assetCount(platform: Platform, metadata: GalleryMetadata) {
     return metadata.imagePost.images.length;
   }
   return metadata.count ?? 1;
+}
+
+function sourcePageSize(source: ProfileSource, pageSize: number) {
+  return source.kind === 'highlights'
+    ? Math.min(pageSize, MAX_HIGHLIGHTS_PER_DISCOVERY_PAGE)
+    : pageSize;
 }
 
 async function extractProfileSource(
@@ -449,11 +489,15 @@ function profileMedia(
   const candidate = profileMediaSchema.safeParse({
     ...details,
     platform,
+    sourceKind: source.kind,
+    sourceVersion:
+      source.kind === 'highlights' ? String(metadata.count ?? 0) : null,
     thumbnailUrl: thumbnailUrl(platform, metadata),
     caption:
       metadata.description ??
       metadata.desc ??
       metadata.caption ??
+      metadata.highlight_title ??
       metadata.title ??
       null,
     publishedAt: publishedDate(metadata),
@@ -470,6 +514,7 @@ function normalizeSourcePage(
   username: string,
 ) {
   const entries: Array<ProfileMedia | undefined> = [];
+  const highlightMediaIds = new Map<ProfileMedia, string[]>();
   const mediaByUrl = new Map<string, ProfileMedia>();
   let currentEntryIndex: number | undefined;
   let currentMedia: ProfileMedia | undefined;
@@ -488,6 +533,12 @@ function normalizeSourcePage(
 
       currentMedia = mediaByUrl.get(candidate.sourceUrl) ?? candidate;
       mediaByUrl.set(currentMedia.sourceUrl, currentMedia);
+      if (
+        source.kind === 'highlights' &&
+        !highlightMediaIds.has(currentMedia)
+      ) {
+        highlightMediaIds.set(currentMedia, []);
+      }
       entries[currentEntryIndex] = currentMedia;
       continue;
     }
@@ -508,6 +559,9 @@ function normalizeSourcePage(
     }
     if (!currentMedia) continue;
 
+    if (source.kind === 'highlights' && metadata.media_id) {
+      highlightMediaIds.get(currentMedia)?.push(metadata.media_id);
+    }
     if (!currentMedia.thumbnailUrl) {
       const candidateThumbnail =
         thumbnailUrl(platform, metadata) ??
@@ -522,24 +576,42 @@ function normalizeSourcePage(
     }
   }
 
+  for (const [media, mediaIds] of highlightMediaIds) {
+    if (mediaIds.length > 0) {
+      media.sourceVersion = createHash('sha256')
+        .update(JSON.stringify([...new Set(mediaIds)].sort()))
+        .digest('base64url');
+    }
+  }
   return entries;
 }
 
 export async function discoverProfileMedia(
-  { platform, username, cursor }: ProfileLookup,
+  { platform, username, cursor, includeHighlights }: ProfileLookup,
   cookiesPath?: string,
   signal?: AbortSignal,
   pageSize: number = MAX_PROFILE_MEDIA,
   { includeStories = false }: ProfileDiscoveryOptions = {},
 ): Promise<ProfileMediaResults> {
-  const sourceCount = profileSourceCount(platform, includeStories);
-  const cursorContext = { platform, username, sourceCount };
+  const sourceCount = profileSourceCount(
+    platform,
+    includeStories,
+    includeHighlights,
+  );
+  const cursorContext = {
+    includeHighlights,
+    includeStories,
+    platform,
+    username,
+    sourceCount,
+  };
   const continuation = decodeProfileCursor(cursor, cursorContext);
   const profile = await profileSources(
     platform,
     username,
     continuation.profileIdentifier,
     includeStories,
+    includeHighlights,
     signal,
   );
   const authenticationArguments = cookiesPath ? ['--cookies', cookiesPath] : [];
@@ -550,7 +622,7 @@ export async function discoverProfileMedia(
           platform,
           source,
           continuation.sources[index]?.offset ?? 0,
-          pageSize,
+          sourcePageSize(source, pageSize),
           authenticationArguments,
           signal,
         );
@@ -575,6 +647,9 @@ export async function discoverProfileMedia(
     }),
   );
   const sourcePages = sourceResults.map((result) => result.entries);
+  const sourcePageSizes = profile.sources.map((source) =>
+    sourcePageSize(source, pageSize),
+  );
   const extractionError = sourceResults.flatMap((result) => result.errors)[0];
   if (extractionError) throw extractionError;
 
@@ -626,7 +701,10 @@ export async function discoverProfileMedia(
       entryKeys.slice(consumedEntries).filter((key) => key !== undefined),
     );
     const skipKeys = [...emittedKeys].filter((key) => remainingKeys.has(key));
-    if (consumedEntries < entries.length || entries.length === pageSize + 1) {
+    if (
+      consumedEntries < entries.length ||
+      entries.length === (sourcePageSizes[index] ?? pageSize) + 1
+    ) {
       hasContinuation = true;
     }
     return {

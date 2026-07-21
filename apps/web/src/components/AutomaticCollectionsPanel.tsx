@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AUTOMATIC_COLLECTION_INTERVAL_OPTIONS,
+  HIGHLIGHT_SUPPORTED_PLATFORMS,
   MAX_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   MIN_AUTOMATIC_COLLECTION_INTERVAL_MINUTES,
   STORY_SUPPORTED_PLATFORMS,
@@ -19,6 +20,7 @@ export function AutomaticCollectionsPanel() {
   const [username, setUsername] = useState('');
   const [intervalMinutes, setIntervalMinutes] = useState(60);
   const [includeStories, setIncludeStories] = useState(false);
+  const [includeHighlights, setIncludeHighlights] = useState(false);
   const [message, setMessage] = useState('');
   const queryClient = useQueryClient();
   const profiles = useQuery({
@@ -31,6 +33,7 @@ export function AutomaticCollectionsPanel() {
     onMutate: () => setMessage(''),
     onSuccess: () => {
       setIncludeStories(false);
+      setIncludeHighlights(false);
       setUsername('');
       setMessage('Automatic collection enabled. The first check was queued.');
     },
@@ -71,6 +74,7 @@ export function AutomaticCollectionsPanel() {
   });
 
   const supportsStories = STORY_SUPPORTED_PLATFORMS.includes(platform);
+  const supportsHighlights = HIGHLIGHT_SUPPORTED_PLATFORMS.includes(platform);
 
   function submitProfile(event: FormEvent) {
     event.preventDefault();
@@ -79,6 +83,7 @@ export function AutomaticCollectionsPanel() {
       username,
       intervalMinutes,
       includeStories: supportsStories && includeStories,
+      includeHighlights: supportsHighlights && includeHighlights,
     });
   }
 
@@ -114,6 +119,9 @@ export function AutomaticCollectionsPanel() {
             setPlatform(nextPlatform);
             if (!STORY_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
               setIncludeStories(false);
+            }
+            if (!HIGHLIGHT_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
+              setIncludeHighlights(false);
             }
           }}
           value={platform}
@@ -151,7 +159,17 @@ export function AutomaticCollectionsPanel() {
               onChange={(event) => setIncludeStories(event.target.checked)}
               type="checkbox"
             />
-            Include stories
+            Include current stories
+          </label>
+        )}
+        {supportsHighlights && (
+          <label className="automatic-story-toggle">
+            <input
+              checked={includeHighlights}
+              onChange={(event) => setIncludeHighlights(event.target.checked)}
+              type="checkbox"
+            />
+            Include Story Highlights
           </label>
         )}
         <button disabled={createProfile.isPending} type="submit">
@@ -221,7 +239,7 @@ export function AutomaticCollectionsPanel() {
               {STORY_SUPPORTED_PLATFORMS.includes(profile.platform) && (
                 <label className="automatic-story-toggle">
                   <input
-                    aria-label={`Include stories for ${profile.username}`}
+                    aria-label={`Include current stories for ${profile.username}`}
                     checked={profile.includeStories}
                     disabled={isMutating}
                     onChange={(event) =>
@@ -232,7 +250,24 @@ export function AutomaticCollectionsPanel() {
                     }
                     type="checkbox"
                   />
-                  Stories
+                  Current stories
+                </label>
+              )}
+              {HIGHLIGHT_SUPPORTED_PLATFORMS.includes(profile.platform) && (
+                <label className="automatic-story-toggle">
+                  <input
+                    aria-label={`Include Story Highlights for ${profile.username}`}
+                    checked={profile.includeHighlights}
+                    disabled={isMutating}
+                    onChange={(event) =>
+                      updateProfile.mutate({
+                        id: profile.id,
+                        input: { includeHighlights: event.target.checked },
+                      })
+                    }
+                    type="checkbox"
+                  />
+                  Story Highlights
                 </label>
               )}
               <div className="automatic-profile-actions">

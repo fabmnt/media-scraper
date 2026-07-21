@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AUTOMATIC_COLLECTION_INTERVAL_OPTIONS,
+  HIGHLIGHT_SUPPORTED_PLATFORMS,
   STORY_SUPPORTED_PLATFORMS,
   SUPPORTED_PLATFORMS,
   type Platform,
@@ -14,6 +15,7 @@ export function ProfileArchiveForm() {
   const [username, setUsername] = useState('');
   const [intervalMinutes, setIntervalMinutes] = useState(60);
   const [includeStories, setIncludeStories] = useState(false);
+  const [includeHighlights, setIncludeHighlights] = useState(false);
   const [message, setMessage] = useState('');
   const queryClient = useQueryClient();
   const archive = useMutation({
@@ -22,6 +24,7 @@ export function ProfileArchiveForm() {
     onSuccess: (result) => {
       setUsername('');
       setIncludeStories(false);
+      setIncludeHighlights(false);
       setMessage(
         `Archive started and @${result.profile.username} is now being watched.`,
       );
@@ -33,6 +36,7 @@ export function ProfileArchiveForm() {
     },
   });
   const supportsStories = STORY_SUPPORTED_PLATFORMS.includes(platform);
+  const supportsHighlights = HIGHLIGHT_SUPPORTED_PLATFORMS.includes(platform);
 
   function submitArchive(event: FormEvent) {
     event.preventDefault();
@@ -41,6 +45,7 @@ export function ProfileArchiveForm() {
       username,
       intervalMinutes,
       includeStories: supportsStories && includeStories,
+      includeHighlights: supportsHighlights && includeHighlights,
     });
   }
 
@@ -64,6 +69,9 @@ export function ProfileArchiveForm() {
             setPlatform(nextPlatform);
             if (!STORY_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
               setIncludeStories(false);
+            }
+            if (!HIGHLIGHT_SUPPORTED_PLATFORMS.includes(nextPlatform)) {
+              setIncludeHighlights(false);
             }
           }}
           value={platform}
@@ -102,6 +110,16 @@ export function ProfileArchiveForm() {
               type="checkbox"
             />
             Include current stories
+          </label>
+        )}
+        {supportsHighlights && (
+          <label className="automatic-story-toggle">
+            <input
+              checked={includeHighlights}
+              onChange={(event) => setIncludeHighlights(event.target.checked)}
+              type="checkbox"
+            />
+            Include Story Highlights
           </label>
         )}
         <button disabled={archive.isPending} type="submit">

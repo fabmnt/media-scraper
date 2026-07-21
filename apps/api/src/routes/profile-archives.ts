@@ -75,6 +75,7 @@ export async function profileArchiveRoutes(
           .values({
             automaticProfileId: profile.id,
             includeStories: input.includeStories,
+            includeHighlights: input.includeHighlights,
           })
           .returning();
         if (!backfill) throw new Error('Failed to create profile archive');

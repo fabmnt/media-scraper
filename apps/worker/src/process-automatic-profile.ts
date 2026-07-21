@@ -52,7 +52,11 @@ export async function processAutomaticProfile(
     );
     await waitForProfileDiscovery(profileDiscoveryIntervalMs, signal);
     const result = await discoverProfileMedia(
-      { platform: profile.platform, username: profile.username },
+      {
+        platform: profile.platform,
+        username: profile.username,
+        includeHighlights: profile.includeHighlights,
+      },
       cookiesPath,
       signal,
       MAX_PROFILE_MEDIA,

@@ -1,0 +1,1 @@
+ALTER TABLE "collections" ADD COLUMN "discovered_source_version" text;

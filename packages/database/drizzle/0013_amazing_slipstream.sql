@@ -1,0 +1,2 @@
+ALTER TABLE "automatic_profiles" ADD COLUMN "include_highlights" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "profile_backfills" ADD COLUMN "include_highlights" boolean DEFAULT false NOT NULL;
