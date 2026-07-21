@@ -46,6 +46,11 @@ interface LoadedGroupPages {
   requestKey: string;
 }
 
+interface PreviewSelection {
+  assetId: string | undefined;
+  itemId: string;
+}
+
 function filtersFromUrl(): GalleryFilters {
   const searchParameters = new URLSearchParams(window.location.search);
   const platform = MEDIA_PLATFORMS.find(
@@ -72,7 +77,7 @@ export function Gallery() {
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
-  const [previewItemId, setPreviewItemId] = useState<string>();
+  const [previewSelection, setPreviewSelection] = useState<PreviewSelection>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string>();
   const [debouncedSearch, setDebouncedSearch] = useState(search.trim());
@@ -307,9 +312,12 @@ export function Gallery() {
     },
     [deleteMedia],
   );
-  const openPreview = useCallback((itemId: string) => {
-    setPreviewItemId(itemId);
-  }, []);
+  const openPreview = useCallback(
+    (itemId: string, assetId: string | undefined) => {
+      setPreviewSelection({ assetId, itemId });
+    },
+    [],
+  );
   const toggleItemSelection = useCallback((itemId: string) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -576,12 +584,13 @@ export function Gallery() {
           </button>
         )}
       </section>
-      {previewItemId && (
+      {previewSelection && (
         <MediaPreview
           getLoadMore={getPreviewLoadMore}
           groups={groups}
-          initialItemId={previewItemId}
-          onClose={() => setPreviewItemId(undefined)}
+          initialAssetId={previewSelection.assetId}
+          initialItemId={previewSelection.itemId}
+          onClose={() => setPreviewSelection(undefined)}
         />
       )}
     </>

@@ -20,7 +20,7 @@ export const MediaCard = memo(function MediaCard({
   isSelected: boolean;
   item: MediaItem;
   onDelete: (item: MediaItem) => void;
-  onPreview: (itemId: string) => void;
+  onPreview: (itemId: string, assetId: string | undefined) => void;
   onSelect: (itemId: string) => void;
 }) {
   const { isVisible, targetRef } = useViewportVisibility<HTMLDivElement>();
@@ -71,7 +71,7 @@ export const MediaCard = memo(function MediaCard({
       className={`media-card${isSelected ? ' selected' : ''}`}
       onClick={() => {
         if (consumeSwipe()) return;
-        onPreview(item.id);
+        onPreview(item.id, selectedAsset?.id);
       }}
       onKeyDown={(event) => {
         if (
@@ -81,7 +81,7 @@ export const MediaCard = memo(function MediaCard({
           return;
         }
         event.preventDefault();
-        onPreview(item.id);
+        onPreview(item.id, selectedAsset?.id);
       }}
       tabIndex={0}
     >
@@ -176,7 +176,7 @@ export const MediaCard = memo(function MediaCard({
           <button
             aria-label={`Preview media by ${item.authorName ?? UNKNOWN_CREATOR_LABEL}`}
             className="preview-button"
-            onClick={() => onPreview(item.id)}
+            onClick={() => onPreview(item.id, selectedAsset?.id)}
             title="Preview"
             type="button"
           >

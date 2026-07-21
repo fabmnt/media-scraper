@@ -29,11 +29,13 @@ type MediaSelectorItem =
 export function MediaPreview({
   getLoadMore,
   groups,
+  initialAssetId,
   initialItemId,
   onClose,
 }: {
   getLoadMore: (groupKey: string) => PreviewLoadMore | undefined;
   groups: MediaItemGroup[];
+  initialAssetId: string | undefined;
   initialItemId: string;
   onClose: () => void;
 }) {
@@ -43,8 +45,14 @@ export function MediaPreview({
     items.findIndex((item) => item.id === initialItemId),
     0,
   );
+  const initialAssetIndex = Math.max(
+    items[initialItemIndex]?.assets.findIndex(
+      (asset) => asset.id === initialAssetId,
+    ) ?? -1,
+    0,
+  );
   const [itemIndex, setItemIndex] = useState(initialItemIndex);
-  const [assetIndex, setAssetIndex] = useState(0);
+  const [assetIndex, setAssetIndex] = useState(initialAssetIndex);
   const [loadedAssetIds, setLoadedAssetIds] = useState<Set<string>>(
     () => new Set(),
   );
