@@ -314,10 +314,14 @@ async function extractWithYtDlp(
     if (itemFiles.length === 0) return [];
 
     const sourceUrl = item.webpage_url ?? item.original_url ?? url;
-    const profileUsername = new URL(sourceUrl).pathname
-      .split('/')
-      .find((segment) => segment.startsWith('@'))
-      ?.slice(1);
+    const profileUsername = [sourceUrl, url]
+      .flatMap((candidateUrl) => {
+        const username = new URL(candidateUrl).pathname
+          .split('/')
+          .find((segment) => segment.startsWith('@'));
+        return username ? [username.slice(1)] : [];
+      })
+      .at(0);
     return [
       {
         sourceId: item.id ?? sourceIdForUrl(sourceUrl),
