@@ -231,22 +231,26 @@ async function listAllGroups({
   const usernameExpression = sql<
     string | null
   >`nullif(btrim(${mediaItems.authorName}), '')`;
-  const discoveredGroups =
-    groupBy === 'username'
-      ? await db
-          .selectDistinct({ value: usernameExpression })
-          .from(mediaItems)
-          .where(filters.length > 0 ? and(...filters) : undefined)
-          .orderBy(asc(usernameExpression))
-          .limit(MEDIA_GROUP_PAGE_SIZE + 1)
-          .offset(groupOffset)
-      : await db
-          .selectDistinct({ value: mediaItems.platform })
-          .from(mediaItems)
-          .where(filters.length > 0 ? and(...filters) : undefined)
-          .orderBy(asc(mediaItems.platform))
-          .limit(MEDIA_GROUP_PAGE_SIZE + 1)
-          .offset(groupOffset);
+  const groupExpression =
+    groupBy === 'username' ? usernameExpression : mediaItems.platform;
+  const newestCollectedAt = sql<Date>`max(${mediaItems.collectedAt})`;
+  const newestPublishedAt = sql<Date | null>`max(${mediaItems.publishedAt})`;
+  const groupOrder =
+    sortBy === 'publishedAt'
+      ? [
+          sql`${newestPublishedAt} desc nulls last`,
+          sql`${newestCollectedAt} desc`,
+          asc(groupExpression),
+        ]
+      : [sql`${newestCollectedAt} desc`, asc(groupExpression)];
+  const discoveredGroups = await db
+    .select({ value: groupExpression })
+    .from(mediaItems)
+    .where(filters.length > 0 ? and(...filters) : undefined)
+    .groupBy(groupExpression)
+    .orderBy(...groupOrder)
+    .limit(MEDIA_GROUP_PAGE_SIZE + 1)
+    .offset(groupOffset);
   const hasMoreGroups = discoveredGroups.length > MEDIA_GROUP_PAGE_SIZE;
   const groupPayloads: GroupedKeyPayload[] = discoveredGroups
     .slice(0, MEDIA_GROUP_PAGE_SIZE)
@@ -259,8 +263,6 @@ async function listAllGroups({
     return { groups: [], nextGroupOffset: null };
   }
 
-  const groupExpression =
-    groupBy === 'username' ? usernameExpression : mediaItems.platform;
   if (groupBy === 'username') {
     const usernames = groupPayloads.flatMap((group) =>
       group.groupBy === 'username' && group.value !== null ? [group.value] : [],
