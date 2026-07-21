@@ -1,4 +1,8 @@
-import { type ReactEventHandler, type TouchEventHandler, useState } from 'react';
+import {
+  type ReactEventHandler,
+  type TouchEventHandler,
+  useState,
+} from 'react';
 import { useVideoVolume } from '../hooks/useVideoVolume';
 
 const FRAME_IMAGE_MIME_TYPE = 'image/jpeg';

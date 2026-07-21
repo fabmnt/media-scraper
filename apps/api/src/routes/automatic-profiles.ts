@@ -20,6 +20,7 @@ import {
   removeAutomaticProfileScheduler,
   upsertAutomaticProfileScheduler,
 } from '../automatic-profile-scheduler.js';
+import { isUniqueViolation } from '../database-errors.js';
 import { queueProfileBackfill } from '../profile-backfill-queue.js';
 import { serializeAutomaticProfile } from '../serialization.js';
 
@@ -41,15 +42,6 @@ class AutomaticProfileQueueError extends Error {
 
 class AutomaticProfileOptionUnsupportedError extends Error {
   readonly statusCode = 400;
-}
-
-function isUniqueViolation(error: unknown) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505'
-  );
 }
 
 export async function automaticProfileRoutes(

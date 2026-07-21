@@ -16,6 +16,7 @@ import {
   type Database,
 } from '@media-scraper/database';
 import { upsertAutomaticProfileScheduler } from '../automatic-profile-scheduler.js';
+import { isUniqueViolation } from '../database-errors.js';
 import { queueProfileBackfill } from '../profile-backfill-queue.js';
 import {
   serializeAutomaticProfile,
@@ -49,15 +50,6 @@ const collectionStatusCount = (
   sql<number>`count(${collections.id}) filter (where ${collections.status} = ${status})`.mapWith(
     Number,
   );
-
-function isUniqueViolation(error: unknown) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505'
-  );
-}
 
 export async function profileArchiveRoutes(
   app: FastifyInstance,
