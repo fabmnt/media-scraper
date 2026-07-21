@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
+import {
+  MANUAL_UPLOAD_LABEL,
+  type MediaItem,
+  type MediaItemGroup,
+} from '@media-scraper/shared';
 import { api } from '../api';
 import { VideoFrameCapture } from './VideoFrameCapture';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
@@ -12,17 +16,28 @@ interface PreviewLoadMore {
   onLoad: () => void;
 }
 
+type MediaSelectorItem =
+  | {
+      asset: MediaItem['assets'][number];
+      assetIndex: number;
+      item: MediaItem;
+      itemIndex: number;
+      kind: 'asset';
+    }
+  | { groupKey: string; kind: 'load-more' };
+
 export function MediaPreview({
   getLoadMore,
+  groups,
   initialItemId,
-  items,
   onClose,
 }: {
-  getLoadMore: (itemId: string) => PreviewLoadMore | undefined;
+  getLoadMore: (groupKey: string) => PreviewLoadMore | undefined;
+  groups: MediaItemGroup[];
   initialItemId: string;
-  items: MediaItem[];
   onClose: () => void;
 }) {
+  const items = groups.flatMap((group) => group.items);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const initialItemIndex = Math.max(
     items.findIndex((item) => item.id === initialItemId),
@@ -32,20 +47,36 @@ export function MediaPreview({
   const [assetIndex, setAssetIndex] = useState(0);
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
-  const mediaSelectorItems = useMemo(
-    () =>
-      items.flatMap((mediaItem, mediaItemIndex) =>
-        mediaItem.assets.map((mediaAsset, mediaAssetIndex) => ({
-          asset: mediaAsset,
-          assetIndex: mediaAssetIndex,
-          item: mediaItem,
-          itemIndex: mediaItemIndex,
-        })),
-      ),
-    [items],
+  const mediaSelectorItems = useMemo(() => {
+    const selectorItems: MediaSelectorItem[] = [];
+    let itemIndex = 0;
+
+    for (const group of groups) {
+      for (const item of group.items) {
+        for (const [assetIndex, asset] of item.assets.entries()) {
+          selectorItems.push({
+            asset,
+            assetIndex,
+            item,
+            itemIndex,
+            kind: 'asset',
+          });
+        }
+        itemIndex += 1;
+      }
+      if (group.nextOffset !== null) {
+        selectorItems.push({ groupKey: group.key, kind: 'load-more' });
+      }
+    }
+    return selectorItems;
+  }, [groups]);
+  const mediaFileCount = items.reduce(
+    (count, mediaItem) => count + mediaItem.assets.length,
+    0,
   );
   const selectedSelectorItemIndex = mediaSelectorItems.findIndex(
     (selectorItem) =>
+      selectorItem.kind === 'asset' &&
       selectorItem.itemIndex === itemIndex &&
       selectorItem.assetIndex === assetIndex,
   );
@@ -66,7 +97,6 @@ export function MediaPreview({
   );
   const platformLabel =
     item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
-  const loadMore = item ? getLoadMore(item.id) : undefined;
   const canGoPrevious = itemIndex > 0 || assetIndex > 0;
   const canGoNext = item
     ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1
@@ -234,7 +264,7 @@ export function MediaPreview({
           <aside aria-label="Media selector" className="media-selector">
             <header className="media-selector-header">
               <span>Media</span>
-              <span>{mediaSelectorItems.length}</span>
+              <span>{mediaFileCount}</span>
             </header>
             <div
               className="media-selector-list"
@@ -252,6 +282,23 @@ export function MediaPreview({
                   }}
                 >
                   {visibleSelectorItems.map((selectorItem) => {
+                    if (selectorItem.kind === 'load-more') {
+                      const loadMore = getLoadMore(selectorItem.groupKey);
+                      if (!loadMore) return null;
+                      return (
+                        <button
+                          aria-label="Load more files in this group"
+                          className="media-selector-load-more"
+                          disabled={loadMore.isLoading}
+                          key={`load-more-${selectorItem.groupKey}`}
+                          onClick={loadMore.onLoad}
+                          type="button"
+                        >
+                          {loadMore.isLoading ? 'Loading…' : 'Load more'}
+                        </button>
+                      );
+                    }
+
                     const isSelected =
                       itemIndex === selectorItem.itemIndex &&
                       assetIndex === selectorItem.assetIndex;
@@ -298,16 +345,6 @@ export function MediaPreview({
                 </div>
               </div>
             </div>
-            {loadMore && (
-              <button
-                className="media-selector-load-more"
-                disabled={loadMore.isLoading}
-                onClick={loadMore.onLoad}
-                type="button"
-              >
-                {loadMore.isLoading ? 'Loading…' : 'Load more files'}
-              </button>
-            )}
           </aside>
         </div>
 
