@@ -536,7 +536,6 @@ export function Gallery() {
                         onDelete={deleteItem}
                         onPreview={openPreview}
                         onSelect={toggleItemSelection}
-                        previewOpen={Boolean(previewItemId)}
                       />
                     ))}
                   </div>

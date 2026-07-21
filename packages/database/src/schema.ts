@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   pgEnum,
@@ -239,6 +240,7 @@ export const mediaAssets = pgTable(
     mediaItemId: uuid('media_item_id')
       .notNull()
       .references(() => mediaItems.id, { onDelete: 'cascade' }),
+    thumbnailForAssetId: uuid('thumbnail_for_asset_id'),
     type: mediaTypeEnum('type').notNull(),
     fileName: text('file_name').notNull(),
     position: integer('position').notNull(),
@@ -267,6 +269,14 @@ export const mediaAssets = pgTable(
       table.mediaItemId,
       table.position,
     ),
+    uniqueIndex('media_assets_thumbnail_for_asset_idx').on(
+      table.thumbnailForAssetId,
+    ),
+    foreignKey({
+      columns: [table.thumbnailForAssetId],
+      foreignColumns: [table.id],
+      name: 'media_assets_thumbnail_for_asset_id_media_assets_id_fk',
+    }).onDelete('cascade'),
     index('media_assets_media_item_idx').on(table.mediaItemId),
   ],
 );

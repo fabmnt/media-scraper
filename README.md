@@ -17,7 +17,8 @@ A personal media archive for public Instagram, Facebook, and TikTok posts and ga
 - Node.js 24+
 - pnpm 11+
 - PostgreSQL and Redis
-- `yt-dlp`, `gallery-dl`, and `ffmpeg` for a locally-run worker
+- `yt-dlp` and `gallery-dl` for a locally-run worker
+- `ffmpeg` for locally-run API and worker media processing
 
 The Docker setup provisions all runtime dependencies automatically.
 
@@ -43,8 +44,8 @@ PROFILE_DISCOVERY_TIMEOUT_MS=45000
 WEB_ORIGIN=http://localhost:5173
 MEDIA_ROOT=/data/media
 CREDENTIALS_ROOT=/data/credentials
-# Optional: override resource-aware collection concurrency (1-8).
-# COLLECTION_CONCURRENCY=4
+# Optional: override resource-aware collection concurrency (1-8). Automatic sizing caps at 2.
+# COLLECTION_CONCURRENCY=2
 MAX_ASSET_BYTES=104857600
 MAX_COLLECTION_BYTES=524288000
 MAX_MEDIA_STORAGE_BYTES=4294967296
@@ -92,13 +93,13 @@ Automatic collection can watch a platform profile and run an uncached metadata c
 
 `POST /profile-archives` starts a background archive and enables automatic collection in one request. `POST /profile-archives/:id/retry`, where `id` is the watched profile ID, restores a failed archive's schedule and requeues its current page. The archive follows the profile continuation cursor one bounded page at a time until all available media has been discovered, persists its progress in PostgreSQL, and resumes queued or interrupted runs when the worker starts. Archives and scheduled checks share the same deduplication path, so they can safely overlap. Profile discovery is paced across both queues within each worker process; run one worker replica when a globally strict upstream request interval is required. Stories mean stories that are currently available; expired stories cannot be archived.
 
-Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Images are preserved exactly as downloaded, without resizing or re-encoding. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. An optimized video replaces its source only when it is smaller or the source exceeds the configured dimensions. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
+Extraction defaults to a 100 MiB asset limit and a 500 MiB collection limit. Images are preserved exactly as downloaded, without resizing or re-encoding. Videos are downloaded at up to 720p when that source is available, then normalized to H.264/AAC with a maximum 1280px dimension and 30 FPS. An optimized video replaces its source only when it is smaller or the source exceeds the configured dimensions. A 480px JPEG derivative is generated for every newly collected or uploaded image and video; gallery cards and the media selector load that derivative, while the full asset is reserved for the modal and downloads. `OPTIMIZATION_TIMEOUT_MS` bounds each FFmpeg operation.
 
 Manual uploads accept up to 100 images, GIFs, and videos as one gallery. Files are streamed rather than buffered in API memory and use the same `MAX_ASSET_BYTES`, `MAX_COLLECTION_BYTES`, storage backend, deletion path, and retention policy as collected media. The username and platform are optional; an omitted platform is labeled **Manual upload**, and an omitted username is grouped as **Unknown username**.
 
 `MAX_MEDIA_STORAGE_BYTES` defaults to 4 GiB. After a collection completes, oldest media is removed when database-tracked usage exceeds `MEDIA_RETENTION_TRIGGER_PERCENT` (80% by default) until it reaches `MEDIA_RETENTION_TARGET_PERCENT` (70%). Retention is serialized independently from collection processing, so collections can run concurrently without overlapping quota decisions.
 
-Collection concurrency is automatically sized when the worker starts. It budgets two CPU threads and 1.5 GiB per collection, reserves 1.5 GiB for the co-located API and worker overhead, and caps automatic concurrency at four. The worker logs rounded detected limits and the selected concurrency at startup. On the current Railway runtime it selects three concurrent collections and reports 8 CPUs and 7.5 GiB, with memory rounded to one decimal place. Set `COLLECTION_CONCURRENCY` to a value from 1 through 8 only when an explicit override is needed. Metadata probing within each collection remains bounded by `METADATA_CONCURRENCY`.
+Collection concurrency is automatically sized when the worker starts. It budgets two CPU threads and 1.5 GiB per collection, reserves 1.5 GiB for the co-located API and worker overhead, and caps automatic concurrency at two to preserve capacity for the API and media streaming. The worker logs rounded detected limits and the selected concurrency at startup. Set `COLLECTION_CONCURRENCY` to a value from 1 through 8 only when an explicit override is needed. Metadata probing within each collection remains bounded by `METADATA_CONCURRENCY`.
 
 ## S3-compatible media storage
 
@@ -117,7 +118,7 @@ S3_FORCE_PATH_STYLE=false
 S3_PRESIGNED_URL_TTL_SECONDS=900
 ```
 
-Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API keeps media private and proxies authenticated media previews through the application origin, so video frames can be exported from the browser canvas. Direct file downloads redirect to short-lived presigned URLs. Local assets created before S3 was enabled continue to work from the attached volume.
+Replace `media-bucket` with the bucket service name. Object keys include the content hash for traceability and a unique ownership suffix so cleanup can never remove another asset's media. The API authenticates each media request, then redirects S3 previews and downloads to short-lived presigned URLs so media bytes bypass the web and backend proxy services. Configure the bucket to allow the web origin with `GET` and `HEAD` CORS access; this preserves browser video-frame export. Local assets are served by the API with private, immutable browser caching. Assets created before thumbnails were introduced continue to use their original file in the gallery until they are recollected or backfilled.
 
 After deploying and applying migrations, move existing local assets into the configured bucket with:
 

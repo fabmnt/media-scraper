@@ -20,7 +20,7 @@ import { processProfileBackfill } from './process-profile-backfill.js';
 import { reconcileProfileBackfills } from './profile-backfill-reconciliation.js';
 import { processMediaMaintenance } from './storage-retention.js';
 
-const AUTO_COLLECTION_CONCURRENCY_LIMIT = 4;
+const AUTO_COLLECTION_CONCURRENCY_LIMIT = 2;
 const BYTES_PER_GIBIBYTE = 1024 ** 3;
 const CPU_THREADS_PER_COLLECTION = 2;
 const MAINTENANCE_INTERVAL_MS = 30_000;

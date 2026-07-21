@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api';
 import { queryKeys } from '../query-keys';
 
-const PROGRESS_REFETCH_MS = 3_000;
+const PROGRESS_REFETCH_MS = 10_000;
 const CIRCLE_RADIUS = 36;
 const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 

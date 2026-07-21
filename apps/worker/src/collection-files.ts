@@ -1,10 +1,16 @@
 import { readdir, rm, rmdir } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import type { ExtractedFile, ExtractedMedia } from '@media-scraper/extractors';
+import { createThumbnail } from '@media-scraper/media-processing';
 import { readFileMetadata } from './file-metadata.js';
+
+type ThumbnailWithMetadata = ExtractedFile & {
+  metadata: Awaited<ReturnType<typeof readFileMetadata>>;
+};
 
 export type FileWithMetadata = ExtractedFile & {
   metadata: Awaited<ReturnType<typeof readFileMetadata>>;
+  thumbnail?: ThumbnailWithMetadata;
 };
 
 export type PreparedMedia = Omit<ExtractedMedia, 'files'> & {
@@ -46,11 +52,13 @@ export async function prepareMedia(
     maxAssetBytes,
     maxCollectionBytes,
     metadataConcurrency,
+    outputRoot,
     signal,
   }: {
     maxAssetBytes: number;
     maxCollectionBytes: number;
     metadataConcurrency: number;
+    outputRoot: string;
     signal: AbortSignal;
   },
 ): Promise<PreparedMedia[]> {
@@ -65,11 +73,13 @@ export async function prepareMedia(
     ),
   );
   let totalBytes = 0;
-  const preparedItems = extractedItems.map((item) => {
+  const preparedItems: PreparedMedia[] = [];
+  for (const item of extractedItems) {
     const hashes = new Set<string>();
-    const files = item.files.flatMap((file): FileWithMetadata[] => {
+    const files: FileWithMetadata[] = [];
+    for (const file of item.files) {
       const metadata = metadataByPath.get(file.absolutePath);
-      if (!metadata || hashes.has(metadata.contentHash)) return [];
+      if (!metadata || hashes.has(metadata.contentHash)) continue;
       hashes.add(metadata.contentHash);
       totalBytes += metadata.sizeBytes;
       if (metadata.sizeBytes > maxAssetBytes) {
@@ -77,10 +87,21 @@ export async function prepareMedia(
           `${basename(file.absolutePath)} exceeds the configured asset limit`,
         );
       }
-      return [{ ...file, metadata }];
-    });
-    return { ...item, files };
-  });
+      const thumbnailFile = await createThumbnail(file, outputRoot, signal);
+      const thumbnail = thumbnailFile
+        ? {
+            ...thumbnailFile,
+            metadata: await readFileMetadata(thumbnailFile.absolutePath),
+          }
+        : undefined;
+      files.push({
+        ...file,
+        metadata,
+        ...(thumbnail ? { thumbnail } : {}),
+      });
+    }
+    preparedItems.push({ ...item, files });
+  }
   if (totalBytes > maxCollectionBytes) {
     throw new Error('Collection exceeds the configured total size limit');
   }

@@ -14,6 +14,7 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/extractors/package.json packages/extractors/package.json
+COPY packages/media-processing/package.json packages/media-processing/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/storage/package.json packages/storage/package.json
 RUN --mount=type=cache,id=s/6c4c77ca-5611-4b2c-8dd7-c6e6a0d9ceea-/pnpm/store,target=/pnpm/store \

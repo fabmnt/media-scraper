@@ -55,6 +55,9 @@ importers:
       '@media-scraper/extractors':
         specifier: workspace:*
         version: link:../../packages/extractors
+      '@media-scraper/media-processing':
+        specifier: workspace:*
+        version: link:../../packages/media-processing
       '@media-scraper/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -126,6 +129,9 @@ importers:
       '@media-scraper/extractors':
         specifier: workspace:*
         version: link:../../packages/extractors
+      '@media-scraper/media-processing':
+        specifier: workspace:*
+        version: link:../../packages/media-processing
       '@media-scraper/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -200,6 +206,15 @@ importers:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.19)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
 
+  packages/media-processing:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.4
+        version: 24.13.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.19)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+
   packages/shared:
     dependencies:
       zod:
@@ -224,60 +239,6 @@ importers:
         version: 8.5.1(postcss@8.5.19)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
 
 packages:
-
-  '@borewit/text-codec@0.2.2':
-    resolution:
-      {
-        integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==,
-      }
-
-  '@tokenizer/inflate@0.4.1':
-    resolution:
-      {
-        integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==,
-      }
-    engines: { node: '>=18' }
-
-  '@tokenizer/token@0.3.0':
-    resolution:
-      {
-        integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==,
-      }
-
-  file-type@21.3.4:
-    resolution:
-      {
-        integrity: sha512-Ievi/yy8DS3ygGvT47PjSfdFoX+2isQueoYP1cntFW1JLYAuS4GD7NUPGg4zv2iZfV52uDyk5w5Z0TdpRS6Q1g==,
-      }
-    engines: { node: '>=20' }
-
-  ieee754@1.2.1:
-    resolution:
-      {
-        integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==,
-      }
-
-  strtok3@10.3.5:
-    resolution:
-      {
-        integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==,
-      }
-    engines: { node: '>=18' }
-
-  token-types@6.1.2:
-    resolution:
-      {
-        integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==,
-      }
-    engines: { node: '>=14.16' }
-
-  uint8array-extras@1.5.0:
-    resolution:
-      {
-        integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==,
-      }
-    engines: { node: '>=18' }
-
   '@aws-sdk/checksums@3.1000.18':
     resolution:
       {
@@ -550,6 +511,12 @@ packages:
         integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==,
       }
     engines: { node: '>=6.9.0' }
+
+  '@borewit/text-codec@0.2.2':
+    resolution:
+      {
+        integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==,
+      }
 
   '@drizzle-team/brocli@0.10.2':
     resolution:
@@ -2034,6 +2001,19 @@ packages:
     peerDependencies:
       react: ^18 || ^19
 
+  '@tokenizer/inflate@0.4.1':
+    resolution:
+      {
+        integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==,
+      }
+    engines: { node: '>=18' }
+
+  '@tokenizer/token@0.3.0':
+    resolution:
+      {
+        integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==,
+      }
+
   '@types/babel__core@7.20.5':
     resolution:
       {
@@ -2839,6 +2819,13 @@ packages:
       }
     engines: { node: '>=16.0.0' }
 
+  file-type@21.3.4:
+    resolution:
+      {
+        integrity: sha512-Ievi/yy8DS3ygGvT47PjSfdFoX+2isQueoYP1cntFW1JLYAuS4GD7NUPGg4zv2iZfV52uDyk5w5Z0TdpRS6Q1g==,
+      }
+    engines: { node: '>=20' }
+
   find-my-way@9.6.0:
     resolution:
       {
@@ -2934,6 +2921,12 @@ packages:
         integrity: sha512-4FbRdAX+bSdmo4AUFuS0WNiPz8NgFt+r8ThgNWmlrjQjt1Q7ZR9+zTlce2859x4KSXrwIsaeTqDoKQmtP8pLmQ==,
       }
     engines: { node: '>= 0.8' }
+
+  ieee754@1.2.1:
+    resolution:
+      {
+        integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==,
+      }
 
   ignore@5.3.2:
     resolution:
@@ -3694,6 +3687,13 @@ packages:
       }
     engines: { node: '>=8' }
 
+  strtok3@10.3.5:
+    resolution:
+      {
+        integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==,
+      }
+    engines: { node: '>=18' }
+
   sucrase@3.35.1:
     resolution:
       {
@@ -3755,6 +3755,13 @@ packages:
         integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==,
       }
     engines: { node: '>=0.6' }
+
+  token-types@6.1.2:
+    resolution:
+      {
+        integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==,
+      }
+    engines: { node: '>=14.16' }
 
   tree-kill@1.2.2:
     resolution:
@@ -3844,6 +3851,13 @@ packages:
       {
         integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==,
       }
+
+  uint8array-extras@1.5.0:
+    resolution:
+      {
+        integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==,
+      }
+    engines: { node: '>=18' }
 
   undici-types@7.18.2:
     resolution:
@@ -3952,41 +3966,6 @@ packages:
       }
 
 snapshots:
-
-  '@borewit/text-codec@0.2.2': {}
-
-  '@tokenizer/inflate@0.4.1':
-    dependencies:
-      debug: 4.4.3
-      token-types: 6.1.2
-    transitivePeerDependencies:
-      - supports-color
-
-  '@tokenizer/token@0.3.0': {}
-
-  file-type@21.3.4:
-    dependencies:
-      '@tokenizer/inflate': 0.4.1
-      strtok3: 10.3.5
-      token-types: 6.1.2
-      uint8array-extras: 1.5.0
-    transitivePeerDependencies:
-      - supports-color
-
-  ieee754@1.2.1: {}
-
-  strtok3@10.3.5:
-    dependencies:
-      '@tokenizer/token': 0.3.0
-
-  token-types@6.1.2:
-    dependencies:
-      '@borewit/text-codec': 0.2.2
-      '@tokenizer/token': 0.3.0
-      ieee754: 1.2.1
-
-  uint8array-extras@1.5.0: {}
-
   '@aws-sdk/checksums@3.1000.18':
     dependencies:
       '@aws-sdk/core': 3.975.3
@@ -4272,6 +4251,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@borewit/text-codec@0.2.2': {}
 
   '@drizzle-team/brocli@0.10.2': {}
 
@@ -4884,6 +4865,15 @@ snapshots:
       '@tanstack/query-core': 5.101.2
       react: 19.2.7
 
+  '@tokenizer/inflate@0.4.1':
+    dependencies:
+      debug: 4.4.3
+      token-types: 6.1.2
+    transitivePeerDependencies:
+      - supports-color
+
+  '@tokenizer/token@0.3.0': {}
+
   '@types/babel__core@7.20.5':
     dependencies:
       '@babel/parser': 7.29.7
@@ -5432,6 +5422,15 @@ snapshots:
     dependencies:
       flat-cache: 4.0.1
 
+  file-type@21.3.4:
+    dependencies:
+      '@tokenizer/inflate': 0.4.1
+      strtok3: 10.3.5
+      token-types: 6.1.2
+      uint8array-extras: 1.5.0
+    transitivePeerDependencies:
+      - supports-color
+
   find-my-way@9.6.0:
     dependencies:
       fast-deep-equal: 3.1.3
@@ -5488,6 +5487,8 @@ snapshots:
       setprototypeof: 1.2.0
       statuses: 2.0.2
       toidentifier: 1.0.1
+
+  ieee754@1.2.1: {}
 
   ignore@5.3.2: {}
 
@@ -5868,6 +5869,10 @@ snapshots:
 
   strip-json-comments@3.1.1: {}
 
+  strtok3@10.3.5:
+    dependencies:
+      '@tokenizer/token': 0.3.0
+
   sucrase@3.35.1:
     dependencies:
       '@jridgewell/gen-mapping': 0.3.13
@@ -5904,6 +5909,12 @@ snapshots:
   toad-cache@3.7.4: {}
 
   toidentifier@1.0.1: {}
+
+  token-types@6.1.2:
+    dependencies:
+      '@borewit/text-codec': 0.2.2
+      '@tokenizer/token': 0.3.0
+      ieee754: 1.2.1
 
   tree-kill@1.2.2: {}
 
@@ -5967,6 +5978,8 @@ snapshots:
   typescript@5.9.3: {}
 
   ufo@1.6.4: {}
+
+  uint8array-extras@1.5.0: {}
 
   undici-types@7.18.2: {}
 

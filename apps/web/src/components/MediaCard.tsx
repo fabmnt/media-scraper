@@ -2,7 +2,6 @@ import { memo, useEffect, useState } from 'react';
 import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
-import { useVideoVolume } from '../hooks/useVideoVolume';
 import { useViewportVisibility } from '../hooks/useViewportVisibility';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
@@ -15,7 +14,6 @@ export const MediaCard = memo(function MediaCard({
   onDelete,
   onPreview,
   onSelect,
-  previewOpen,
 }: {
   deleteDisabled: boolean;
   isDeleting: boolean;
@@ -24,9 +22,7 @@ export const MediaCard = memo(function MediaCard({
   onDelete: (item: MediaItem) => void;
   onPreview: (itemId: string) => void;
   onSelect: (itemId: string) => void;
-  previewOpen: boolean;
 }) {
-  const { bindVideo, videoRef } = useVideoVolume();
   const { isVisible, targetRef } = useViewportVisibility<HTMLDivElement>();
   const [assetIndex, setAssetIndex] = useState(0);
   const [loadedAssetIds, setLoadedAssetIds] = useState<Set<string>>(
@@ -40,14 +36,13 @@ export const MediaCard = memo(function MediaCard({
     !loadedAssetIds.has(selectedAsset.id);
   const platformLabel =
     item.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item.platform;
+  const previewUrl = selectedAsset
+    ? api.mediaUrl(selectedAsset.thumbnailUrl ?? selectedAsset.url)
+    : undefined;
 
   useEffect(() => {
     if (assetIndex >= item.assets.length) setAssetIndex(0);
   }, [assetIndex, item.assets.length]);
-
-  useEffect(() => {
-    if (previewOpen) videoRef.current?.pause();
-  }, [previewOpen]);
 
   function selectAdjacentAsset(direction: -1 | 1) {
     setAssetIndex(
@@ -93,9 +88,7 @@ export const MediaCard = memo(function MediaCard({
       <div
         className="preview"
         onClick={(event) => {
-          if (consumeSwipe() || selectedAsset?.type === 'video') {
-            event.stopPropagation();
-          }
+          if (consumeSwipe()) event.stopPropagation();
         }}
         onTouchEnd={(event) => {
           handleTouchEnd(event.changedTouches[0]);
@@ -105,26 +98,16 @@ export const MediaCard = memo(function MediaCard({
         }}
         ref={targetRef}
       >
-        {selectedAsset?.type === 'image' ? (
+        {selectedAsset &&
+        previewUrl &&
+        (selectedAsset.type === 'image' || isVisible) ? (
           <img
             alt={item.caption ?? `${platformLabel} media`}
             decoding="async"
             loading="lazy"
             onError={() => markAssetAsLoaded(selectedAsset.id)}
             onLoad={() => markAssetAsLoaded(selectedAsset.id)}
-            src={api.mediaUrl(selectedAsset.url)}
-          />
-        ) : selectedAsset?.type === 'video' && isVisible ? (
-          <video
-            controls
-            key={selectedAsset.id}
-            onError={() => markAssetAsLoaded(selectedAsset.id)}
-            onLoadedData={() => markAssetAsLoaded(selectedAsset.id)}
-            loop
-            playsInline
-            preload="metadata"
-            ref={bindVideo}
-            src={api.mediaUrl(selectedAsset.url)}
+            src={previewUrl}
           />
         ) : selectedAsset ? null : (
           <div className="empty-preview">No preview</div>

@@ -68,7 +68,11 @@ export async function persistCollection(
 
     const filesByPath = new Map(
       acceptedItems
-        .flatMap((item) => item.files)
+        .flatMap((item) =>
+          item.files.flatMap((file) =>
+            file.thumbnail ? [file, file.thumbnail] : [file],
+          ),
+        )
         .map((file) => [file.absolutePath, file]),
     );
     const filesToStore = [...filesByPath.values()];
@@ -146,23 +150,47 @@ export async function persistCollection(
           .delete(mediaAssets)
           .where(eq(mediaAssets.mediaItemId, item.id));
         if (extractedItem.files.length > 0) {
-          await transaction.insert(mediaAssets).values(
-            extractedItem.files.map((file, position) => {
-              const location = storedLocations.get(file.absolutePath);
-              if (!location) throw new Error('Media file was not stored');
-              if (location.relativePath) {
-                retainedPaths.add(location.relativePath);
-              }
-              return {
+          const originals = await transaction
+            .insert(mediaAssets)
+            .values(
+              extractedItem.files.map((file, position) => {
+                const location = storedLocations.get(file.absolutePath);
+                if (!location) throw new Error('Media file was not stored');
+                if (location.relativePath)
+                  retainedPaths.add(location.relativePath);
+                return {
+                  mediaItemId: item.id,
+                  type: file.type,
+                  fileName: basename(file.absolutePath),
+                  position,
+                  ...location,
+                  ...file.metadata,
+                };
+              }),
+            )
+            .returning({ id: mediaAssets.id });
+          const thumbnails = extractedItem.files.flatMap((file, position) => {
+            const thumbnail = file.thumbnail;
+            const original = originals[position];
+            if (!thumbnail || !original) return [];
+            const location = storedLocations.get(thumbnail.absolutePath);
+            if (!location) throw new Error('Thumbnail was not stored');
+            if (location.relativePath) retainedPaths.add(location.relativePath);
+            return [
+              {
                 mediaItemId: item.id,
-                type: file.type,
-                fileName: basename(file.absolutePath),
-                position,
+                thumbnailForAssetId: original.id,
+                type: thumbnail.type,
+                fileName: basename(thumbnail.absolutePath),
+                position: extractedItem.files.length + position,
                 ...location,
-                ...file.metadata,
-              };
-            }),
-          );
+                ...thumbnail.metadata,
+              },
+            ];
+          });
+          if (thumbnails.length > 0) {
+            await transaction.insert(mediaAssets).values(thumbnails);
+          }
         }
         await enqueueAssetCleanup(transaction, previousAssets);
       }

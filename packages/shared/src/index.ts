@@ -368,6 +368,7 @@ export const mediaAssetSchema = z.object({
   fileName: z.string(),
   mimeType: z.string(),
   url: z.string(),
+  thumbnailUrl: z.string().nullable(),
   sizeBytes: z.number().int().nonnegative(),
   width: z.number().int().positive().nullable(),
   height: z.number().int().positive().nullable(),

@@ -15,6 +15,7 @@
     "@media-scraper/config": "workspace:*",
     "@media-scraper/database": "workspace:*",
     "@media-scraper/extractors": "workspace:*",
+    "@media-scraper/media-processing": "workspace:*",
     "@media-scraper/shared": "workspace:*",
     "@media-scraper/storage": "workspace:*",
     "bullmq": "^5.66.4",

@@ -11,6 +11,8 @@ import {
 import type { MediaStorage } from '@media-scraper/storage';
 import { listMediaGroups } from '../media-library.js';
 
+const LOCAL_MEDIA_CACHE_CONTROL = 'private, max-age=31536000, immutable';
+
 const idParamsSchema = z.object({ id: z.uuid() });
 const assetParamsSchema = idParamsSchema.extend({
   action: z.enum(['content', 'download']),
@@ -32,34 +34,11 @@ export async function mediaRoutes(
       .where(eq(mediaAssets.id, id));
     if (!asset) return reply.code(404).send({ message: 'Asset not found' });
     if (asset.storageKey) {
-      if (action === 'download') {
-        const url = await storage.createReadUrl(
-          asset.storageKey,
-          asset.fileName,
-        );
-        return reply.redirect(url);
-      }
-
-      const object = await storage.getObject(
+      const url = await storage.createReadUrl(
         asset.storageKey,
-        request.headers.range,
+        action === 'download' ? asset.fileName : undefined,
       );
-      if (!object.Body) {
-        throw new Error('Stored media object has no readable body');
-      }
-      if (object.AcceptRanges) {
-        reply.header('accept-ranges', object.AcceptRanges);
-      }
-      if (object.ContentLength !== undefined) {
-        reply.header('content-length', object.ContentLength);
-      }
-      if (object.ContentRange) {
-        reply.header('content-range', object.ContentRange);
-      }
-      if (object.ETag) reply.header('etag', object.ETag);
-      reply.type(asset.mimeType);
-      reply.code(object.$metadata.httpStatusCode ?? 200);
-      return reply.send(object.Body);
+      return reply.redirect(url);
     }
     if (!asset.relativePath || !storage.localPath(asset.relativePath)) {
       return reply.code(400).send({ message: 'Invalid asset path' });
@@ -71,6 +50,7 @@ export async function mediaRoutes(
         `attachment; filename="${safeFileName}"`,
       );
     }
+    reply.header('cache-control', LOCAL_MEDIA_CACHE_CONTROL);
     reply.type(asset.mimeType);
     return reply.sendFile(asset.relativePath, root);
   });

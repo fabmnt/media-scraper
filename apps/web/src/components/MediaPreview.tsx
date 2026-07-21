@@ -265,22 +265,15 @@ export function MediaPreview({
                         type="button"
                       >
                         <span className="media-selector-thumbnail">
-                          {selectorItem.asset.type === 'image' ? (
-                            <img
-                              alt=""
-                              decoding="async"
-                              loading="lazy"
-                              src={api.mediaUrl(selectorItem.asset.url)}
-                            />
-                          ) : (
-                            <video
-                              aria-hidden="true"
-                              muted
-                              playsInline
-                              preload="metadata"
-                              src={api.mediaUrl(selectorItem.asset.url)}
-                            />
-                          )}
+                          <img
+                            alt=""
+                            decoding="async"
+                            loading="lazy"
+                            src={api.mediaUrl(
+                              selectorItem.asset.thumbnailUrl ??
+                                selectorItem.asset.url,
+                            )}
+                          />
                         </span>
                         <span className="media-selector-details">
                           <strong>

@@ -12,6 +12,8 @@ import { queryKeys } from '../query-keys';
 const RECENT_JOB_COUNT = 5;
 const FAILED_PAGE_SIZE = 20;
 const ACTIVE_JOB_LIMIT = 100;
+const ACTIVE_JOB_REFETCH_MS = 10_000;
+const IDLE_JOB_REFETCH_MS = 60_000;
 
 export function JobsPanel() {
   const queryClient = useQueryClient();
@@ -22,20 +24,26 @@ export function JobsPanel() {
       query.state.data?.items.some(
         (job) => job.status === 'queued' || job.status === 'processing',
       )
-        ? 3_000
-        : false,
+        ? ACTIVE_JOB_REFETCH_MS
+        : IDLE_JOB_REFETCH_MS,
   });
   const queued = useQuery({
     queryKey: queryKeys.activeCollections('queued'),
     queryFn: () =>
       api.listCollections({ limit: ACTIVE_JOB_LIMIT, status: 'queued' }),
-    refetchInterval: 3_000,
+    refetchInterval: (query) =>
+      query.state.data?.items.length
+        ? ACTIVE_JOB_REFETCH_MS
+        : IDLE_JOB_REFETCH_MS,
   });
   const processing = useQuery({
     queryKey: queryKeys.activeCollections('processing'),
     queryFn: () =>
       api.listCollections({ limit: ACTIVE_JOB_LIMIT, status: 'processing' }),
-    refetchInterval: 3_000,
+    refetchInterval: (query) =>
+      query.state.data?.items.length
+        ? ACTIVE_JOB_REFETCH_MS
+        : IDLE_JOB_REFETCH_MS,
   });
   const failed = useInfiniteQuery({
     queryKey: queryKeys.failedCollections,

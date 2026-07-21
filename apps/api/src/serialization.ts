@@ -74,18 +74,31 @@ export function serializeMediaItem(
   item: MediaItemRow,
   assets: MediaAssetRow[],
 ): MediaItem {
-  const serializedAssets: MediaAsset[] = assets.map((asset) => ({
-    id: asset.id,
-    type: asset.type,
-    fileName: asset.fileName,
-    mimeType: asset.mimeType,
-    url: `/media-items/${asset.id}/content`,
-    sizeBytes: asset.sizeBytes,
-    width: asset.width,
-    height: asset.height,
-    durationSeconds: asset.durationSeconds,
-  }));
-  const thumbnail = serializedAssets.find((asset) => asset.type === 'image');
+  const thumbnailsByAssetId = new Map(
+    assets.flatMap((asset) =>
+      asset.thumbnailForAssetId
+        ? [[asset.thumbnailForAssetId, asset] as const]
+        : [],
+    ),
+  );
+  const serializedAssets: MediaAsset[] = assets
+    .filter((asset) => !asset.thumbnailForAssetId)
+    .map((asset) => {
+      const thumbnail = thumbnailsByAssetId.get(asset.id);
+      return {
+        id: asset.id,
+        type: asset.type,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        url: `/media-items/${asset.id}/content`,
+        thumbnailUrl: thumbnail ? `/media-items/${thumbnail.id}/content` : null,
+        sizeBytes: asset.sizeBytes,
+        width: asset.width,
+        height: asset.height,
+        durationSeconds: asset.durationSeconds,
+      };
+    });
+  const thumbnail = serializedAssets.find((asset) => asset.thumbnailUrl);
 
   return {
     id: item.id,
@@ -96,7 +109,7 @@ export function serializeMediaItem(
     caption: item.caption,
     publishedAt: item.publishedAt?.toISOString() ?? null,
     collectedAt: item.collectedAt.toISOString(),
-    thumbnailUrl: thumbnail?.url ?? null,
+    thumbnailUrl: thumbnail?.thumbnailUrl ?? null,
     assets: serializedAssets,
   };
 }

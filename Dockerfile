@@ -14,6 +14,7 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/extractors/package.json packages/extractors/package.json
+COPY packages/media-processing/package.json packages/media-processing/package.json
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/storage/package.json packages/storage/package.json
 RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/pnpm/store,target=/pnpm/store \
@@ -37,7 +38,13 @@ RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/root/.cache/pi
   && /opt/media-tools/bin/pip install gallery-dl
 ENV PATH=/opt/media-tools/bin:$PATH
 
-FROM discovery-tools AS api
+FROM discovery-tools AS api-tools
+RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/cache/apt,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/lib/apt/lists,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg
+
+FROM api-tools AS api
 COPY --from=dependencies /app /app
 COPY . .
 RUN pnpm --filter @media-scraper/api build

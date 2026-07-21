@@ -165,6 +165,7 @@ export function VideoFrameCapture({
     <div className="video-frame-preview">
       <video
         aria-label="Video preview"
+        crossOrigin="anonymous"
         controls
         loop
         playsInline

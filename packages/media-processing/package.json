@@ -1,0 +1,16 @@
+{
+  "name": "@media-scraper/media-processing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.4",
+    "tsup": "^8.5.1"
+  }
+}

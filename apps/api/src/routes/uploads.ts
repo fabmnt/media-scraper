@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, rm, stat } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileTypeFromFile } from 'file-type';
 import type { FastifyInstance } from 'fastify';
+import { createThumbnail } from '@media-scraper/media-processing';
 import {
   collections,
   enqueueAssetCleanup,
@@ -32,12 +33,22 @@ const UPLOAD_METADATA_FIELDS = new Set(['platform', 'username']);
 const UNSAFE_IMAGE_MIME_TYPE = 'image/svg+xml';
 const STORE_CONCURRENCY = 4;
 
+interface UploadedThumbnail {
+  absolutePath: string;
+  contentHash: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  type: 'image';
+}
+
 interface UploadedFile {
   absolutePath: string;
   contentHash: string;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
+  thumbnail?: UploadedThumbnail;
   type: MediaType;
 }
 
@@ -83,6 +94,17 @@ function safeFileName(fileName: string) {
     throw badUploadRequest('Each uploaded file must have a name');
   }
   return normalizedFileName;
+}
+
+async function hashFile(absolutePath: string): Promise<string> {
+  const hash = createHash('sha256');
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(absolutePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', resolve);
+    stream.on('error', reject);
+  });
+  return hash.digest('hex');
 }
 
 async function writeUploadedFile(
@@ -239,13 +261,27 @@ export async function uploadRoutes(
         username: fields.username || undefined,
       });
       const platform = input.platform ?? MANUAL_UPLOAD_PLATFORM;
+      for (const file of files) {
+        const thumbnailFile = await createThumbnail(file, uploadDirectory);
+        if (!thumbnailFile) continue;
+        const thumbnail = await describeUploadedFile(
+          thumbnailFile.absolutePath,
+          thumbnailFile.relativePath,
+          'image/jpeg',
+          await hashFile(thumbnailFile.absolutePath),
+        );
+        file.thumbnail = { ...thumbnail, type: 'image' };
+      }
       let nextFileIndex = 0;
       const storeResults = await Promise.allSettled(
         Array.from(
           { length: Math.min(STORE_CONCURRENCY, files.length) },
           async () => {
-            while (nextFileIndex < files.length) {
-              const file = files[nextFileIndex];
+            const filesToStore = files.flatMap((file) =>
+              file.thumbnail ? [file, file.thumbnail] : [file],
+            );
+            while (nextFileIndex < filesToStore.length) {
+              const file = filesToStore[nextFileIndex];
               nextFileIndex += 1;
               if (!file) continue;
               try {
@@ -293,7 +329,7 @@ export async function uploadRoutes(
           .returning();
         if (!mediaItem) throw new Error('Failed to save uploaded media');
 
-        const assets = await transaction
+        const originals = await transaction
           .insert(mediaAssets)
           .values(
             files.map((file, position) => {
@@ -312,8 +348,35 @@ export async function uploadRoutes(
             }),
           )
           .returning();
+        const thumbnails = files.flatMap((file, position) => {
+          const thumbnail = file.thumbnail;
+          const original = originals[position];
+          if (!thumbnail || !original) return [];
+          const location = storedLocations.get(thumbnail.absolutePath);
+          if (!location) throw new Error('Uploaded thumbnail was not stored');
+          return [
+            {
+              ...location,
+              contentHash: thumbnail.contentHash,
+              fileName: thumbnail.fileName,
+              mediaItemId: mediaItem.id,
+              mimeType: thumbnail.mimeType,
+              position: files.length + position,
+              sizeBytes: thumbnail.sizeBytes,
+              thumbnailForAssetId: original.id,
+              type: thumbnail.type,
+            },
+          ];
+        });
+        const assets =
+          thumbnails.length > 0
+            ? await transaction
+                .insert(mediaAssets)
+                .values(thumbnails)
+                .returning()
+            : [];
         await enqueueRetention(transaction);
-        return serializeMediaItem(mediaItem, assets);
+        return serializeMediaItem(mediaItem, [...originals, ...assets]);
       });
       completed = true;
       return reply.code(201).send(result);

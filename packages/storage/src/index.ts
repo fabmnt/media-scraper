@@ -130,19 +130,6 @@ export class MediaStorage {
     );
   }
 
-  async getObject(storageKey: string, range?: string) {
-    if (!this.s3 || !this.bucket) {
-      throw new Error('S3 storage is not configured');
-    }
-    return this.s3.send(
-      new GetObjectCommand({
-        Bucket: this.bucket,
-        Key: storageKey,
-        ...(range ? { Range: range } : {}),
-      }),
-    );
-  }
-
   async deleteObjects(storageKeys: readonly string[], signal?: AbortSignal) {
     const uniqueKeys = [...new Set(storageKeys)];
     if (uniqueKeys.length === 0) return;

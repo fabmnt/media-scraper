@@ -151,6 +151,7 @@ export async function processCollection(
       maxAssetBytes,
       maxCollectionBytes,
       metadataConcurrency,
+      outputRoot: outputDirectory,
       signal,
     });
     signal.throwIfAborted();
