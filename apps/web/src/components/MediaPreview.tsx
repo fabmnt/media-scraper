@@ -45,8 +45,12 @@ export function MediaPreview({
   );
   const [itemIndex, setItemIndex] = useState(initialItemIndex);
   const [assetIndex, setAssetIndex] = useState(0);
+  const [loadedAssetIds, setLoadedAssetIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const item = items[itemIndex];
   const asset = item?.assets[assetIndex];
+  const isAssetLoading = asset !== undefined && !loadedAssetIds.has(asset.id);
   const mediaSelectorItems = useMemo(() => {
     const selectorItems: MediaSelectorItem[] = [];
     let itemIndex = 0;
@@ -128,6 +132,13 @@ export function MediaPreview({
     dialogRef.current?.close();
     onClose();
   }, [onClose]);
+
+  function markAssetAsLoaded(assetId: string) {
+    setLoadedAssetIds((currentAssetIds) => {
+      if (currentAssetIds.has(assetId)) return currentAssetIds;
+      return new Set(currentAssetIds).add(assetId);
+    });
+  }
 
   const { handleTouchEnd, handleTouchStart } = useHorizontalSwipe({
     onSwipeLeft: showNext,
@@ -218,6 +229,8 @@ export function MediaPreview({
             {asset?.type === 'image' ? (
               <img
                 alt={item.caption ?? `${platformLabel} media`}
+                onError={() => markAssetAsLoaded(asset.id)}
+                onLoad={() => markAssetAsLoaded(asset.id)}
                 onTouchEnd={(event) => {
                   handleTouchEnd(event.changedTouches[0]);
                 }}
@@ -230,6 +243,8 @@ export function MediaPreview({
               <VideoFrameCapture
                 fileName={asset.fileName}
                 key={asset.id}
+                onError={() => markAssetAsLoaded(asset.id)}
+                onLoadedData={() => markAssetAsLoaded(asset.id)}
                 onTouchEnd={(event) => {
                   handleTouchEnd(event.changedTouches[0]);
                 }}
@@ -240,6 +255,13 @@ export function MediaPreview({
               />
             ) : (
               <p className="empty-state">No media file available.</p>
+            )}
+            {isAssetLoading && (
+              <div
+                aria-label="Loading media"
+                className="media-loading-skeleton"
+                role="status"
+              />
             )}
             <button
               aria-label="Previous media file"

@@ -870,6 +870,7 @@ button:disabled {
   z-index: 1;
   inset: 0;
   overflow: hidden;
+  pointer-events: none;
   background: #1a1c18;
 }
 .media-loading-skeleton::after {
@@ -1283,6 +1284,7 @@ button:disabled {
 }
 .preview-navigation {
   position: absolute;
+  z-index: 2;
   top: 50%;
   width: 54px;
   height: 70px;
