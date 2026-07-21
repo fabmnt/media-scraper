@@ -134,6 +134,7 @@ export async function processCollection(
       maxCollectionBytes,
       timeoutMs: extractionTimeoutMs,
       ...(hasCredential ? { cookiesPath: credentialPath } : {}),
+      impersonate: job.platform === 'tiktok',
       preferredExtractor,
       signal,
     });

@@ -2,6 +2,7 @@ export { discoverProfileMedia } from './profile-discovery.js';
 export { InvalidProfileCursorError } from './profile-pagination.js';
 
 import { createHash } from 'node:crypto';
+import { YT_DLP_IMPERSONATION_TARGET } from './yt-dlp.js';
 import { mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { extname, join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -34,6 +35,7 @@ export type ExtractorName = 'gallery-dl' | 'yt-dlp';
 
 export interface ExtractionOptions {
   cookiesPath?: string;
+  impersonate?: boolean;
   maxAssetBytes: number;
   maxCollectionBytes: number;
   preferredExtractor?: ExtractorName;
@@ -257,10 +259,14 @@ async function extractWithYtDlp(
   const authenticationArguments = options.cookiesPath
     ? ['--cookies', options.cookiesPath]
     : [];
+  const impersonationArguments = options.impersonate
+    ? ['--impersonate', YT_DLP_IMPERSONATION_TARGET]
+    : [];
   const { stdout } = await runCommand(
     'yt-dlp',
     [
       ...authenticationArguments,
+      ...impersonationArguments,
       '--max-filesize',
       String(options.maxAssetBytes),
       '--no-progress',

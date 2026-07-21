@@ -64,7 +64,7 @@ RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/var/cache/apt,
   apt-get update \
   && apt-get install -y --no-install-recommends ffmpeg
 RUN --mount=type=cache,id=s/7fda2391-ee57-4840-9b72-b7dba3d4937f-/root/.cache/pip,target=/root/.cache/pip \
-  /opt/media-tools/bin/pip install yt-dlp
+  /opt/media-tools/bin/pip install "yt-dlp[default,curl-cffi]"
 
 FROM worker-tools AS worker
 COPY --from=dependencies /app /app

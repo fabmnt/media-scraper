@@ -16,6 +16,7 @@ import {
   InvalidProfileCursorError,
   type ProfileSourceCursor,
 } from './profile-pagination.js';
+import { YT_DLP_IMPERSONATION_TARGET } from './yt-dlp.js';
 
 const execFileAsync = promisify(execFile);
 const DISCOVERY_TIMEOUT_MS = 90_000;
@@ -94,6 +95,17 @@ const galleryMessageSchema = z.union([
   ]),
 ]);
 const galleryOutputSchema = z.array(galleryMessageSchema);
+const ytDlpProfileMetadataSchema = z.looseObject({
+  description: optionalString,
+  id: optionalIdentifier,
+  original_url: optionalString,
+  thumbnail: optionalString,
+  timestamp: z.number().finite().optional().catch(undefined),
+  title: optionalString,
+  uploader: optionalString,
+  webpage_url: optionalString,
+});
+type GalleryMessage = z.infer<typeof galleryMessageSchema>;
 type GalleryMetadata = z.infer<typeof galleryMetadataSchema>;
 
 let activeDiscoveryProcesses = 0;
@@ -411,8 +423,47 @@ function sourcePageSize(source: ProfileSource, pageSize: number) {
     : pageSize;
 }
 
+function tikTokProfileMessages(
+  output: string,
+  username: string,
+): GalleryMessage[] {
+  return output.split('\n').flatMap((line) => {
+    if (!line) return [];
+
+    try {
+      const entry = ytDlpProfileMetadataSchema.parse(JSON.parse(line));
+      if (!entry.id) return [];
+
+      const sourceUrl = entry.webpage_url ?? entry.original_url;
+      const isPhoto = sourceUrl?.includes('/photo/');
+      const publishedAt = entry.timestamp
+        ? new Date(entry.timestamp * 1_000).toISOString()
+        : undefined;
+      return [
+        [
+          GALLERY_DIRECTORY_MESSAGE,
+          {
+            description: entry.description ?? entry.title,
+            id: entry.id,
+            post_type: isPhoto ? 'image' : undefined,
+            post_url:
+              sourceUrl ??
+              `https://www.tiktok.com/@${encodeURIComponent(username)}/${isPhoto ? 'photo' : 'video'}/${entry.id}`,
+            username: entry.uploader ?? username,
+            video: entry.thumbnail ? { cover: entry.thumbnail } : undefined,
+            ...(publishedAt ? { date: publishedAt } : {}),
+          },
+        ],
+      ] as GalleryMessage[];
+    } catch {
+      return [];
+    }
+  });
+}
+
 async function extractProfileSource(
   platform: Platform,
+  username: string,
   source: ProfileSource,
   offset: number,
   pageSize: number,
@@ -437,21 +488,35 @@ async function extractProfileSource(
   await acquireDiscoverySlot(signal);
   try {
     const result = await execFileAsync(
-      'gallery-dl',
-      [
-        '--config-ignore',
-        '--no-input',
-        '--dump-json',
-        '--post-range',
-        postRange,
-        '--option',
-        `max-posts=${String(maxPosts)}`,
-        '--option',
-        `tiktok-range=${String(rangeStart)}-${String(rangeEnd)}`,
-        ...(source.options?.flatMap((option) => ['--option', option]) ?? []),
-        ...authenticationArguments,
-        source.url,
-      ],
+      platform === 'tiktok' ? 'yt-dlp' : 'gallery-dl',
+      platform === 'tiktok'
+        ? [
+            '--flat-playlist',
+            '--playlist-start',
+            String(rangeStart),
+            '--playlist-end',
+            String(rangeEnd),
+            '--dump-json',
+            '--impersonate',
+            YT_DLP_IMPERSONATION_TARGET,
+            ...authenticationArguments,
+            source.url,
+          ]
+        : [
+            '--config-ignore',
+            '--no-input',
+            '--dump-json',
+            '--post-range',
+            postRange,
+            '--option',
+            `max-posts=${String(maxPosts)}`,
+            '--option',
+            `tiktok-range=${String(rangeStart)}-${String(rangeEnd)}`,
+            ...(source.options?.flatMap((option) => ['--option', option]) ??
+              []),
+            ...authenticationArguments,
+            source.url,
+          ],
       {
         encoding: 'utf8',
         maxBuffer: MAX_DISCOVERY_OUTPUT_BYTES,
@@ -468,6 +533,8 @@ async function extractProfileSource(
   } finally {
     releaseDiscoverySlot();
   }
+
+  if (platform === 'tiktok') return tikTokProfileMessages(stdout, username);
 
   try {
     return galleryOutputSchema.parse(JSON.parse(stdout));
@@ -626,6 +693,7 @@ export async function discoverProfileMedia(
       try {
         const messages = await extractProfileSource(
           platform,
+          username,
           source,
           sourceCursor.offset,
           sourcePageSize(source, pageSize),
