@@ -384,6 +384,19 @@ export function Gallery() {
     (media.error ?? remove.error ?? loadMore.error ?? loadMoreGroups.error)
       ?.message ?? deleteError;
 
+  function getPreviewLoadMore(itemId: string) {
+    const group = groups.find((candidate) =>
+      candidate.items.some((candidateItem) => candidateItem.id === itemId),
+    );
+    if (!group || group.nextOffset === null) return undefined;
+
+    return {
+      isLoading:
+        loadMore.isPending && loadMore.variables?.groupKey === group.key,
+      onLoad: () => loadGroup(group),
+    };
+  }
+
   return (
     <>
       <ProfileCollectionProgress />
@@ -567,6 +580,7 @@ export function Gallery() {
       </section>
       {previewItemId && (
         <MediaPreview
+          getLoadMore={getPreviewLoadMore}
           initialItemId={previewItemId}
           items={items}
           onClose={() => setPreviewItemId(undefined)}

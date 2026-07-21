@@ -7,11 +7,18 @@ import { useVirtualList } from '../hooks/useVirtualList';
 
 const MEDIA_SELECTOR_ITEM_HEIGHT = 88;
 
+interface PreviewLoadMore {
+  isLoading: boolean;
+  onLoad: () => void;
+}
+
 export function MediaPreview({
+  getLoadMore,
   initialItemId,
   items,
   onClose,
 }: {
+  getLoadMore: (itemId: string) => PreviewLoadMore | undefined;
   initialItemId: string;
   items: MediaItem[];
   onClose: () => void;
@@ -59,6 +66,7 @@ export function MediaPreview({
   );
   const platformLabel =
     item?.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item?.platform;
+  const loadMore = item ? getLoadMore(item.id) : undefined;
   const canGoPrevious = itemIndex > 0 || assetIndex > 0;
   const canGoNext = item
     ? itemIndex < items.length - 1 || assetIndex < item.assets.length - 1
@@ -290,6 +298,16 @@ export function MediaPreview({
                 </div>
               </div>
             </div>
+            {loadMore && (
+              <button
+                className="media-selector-load-more"
+                disabled={loadMore.isLoading}
+                onClick={loadMore.onLoad}
+                type="button"
+              >
+                {loadMore.isLoading ? 'Loading…' : 'Load more files'}
+              </button>
+            )}
           </aside>
         </div>
 
