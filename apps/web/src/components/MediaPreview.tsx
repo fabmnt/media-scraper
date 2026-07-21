@@ -273,12 +273,13 @@ export function MediaPreview({
                               src={api.mediaUrl(selectorItem.asset.url)}
                             />
                           ) : (
-                            <span
+                            <video
                               aria-hidden="true"
-                              className="media-selector-video-placeholder"
-                            >
-                              Video
-                            </span>
+                              muted
+                              playsInline
+                              preload="metadata"
+                              src={api.mediaUrl(selectorItem.asset.url)}
+                            />
                           )}
                         </span>
                         <span className="media-selector-details">

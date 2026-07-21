@@ -1130,24 +1130,12 @@ button:disabled {
   overflow: hidden;
   background: #090a08;
 }
-.media-selector-thumbnail img {
+.media-selector-thumbnail img,
+.media-selector-thumbnail video {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-.media-selector-video-placeholder {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-  background: linear-gradient(135deg, #252a22, #090a08);
-  font:
-    500 9px 'DM Mono',
-    monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 .media-selector-details {
   min-width: 0;

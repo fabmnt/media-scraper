@@ -3,6 +3,7 @@ import { MANUAL_UPLOAD_LABEL, type MediaItem } from '@media-scraper/shared';
 import { api } from '../api';
 import { useHorizontalSwipe } from '../hooks/useHorizontalSwipe';
 import { useVideoVolume } from '../hooks/useVideoVolume';
+import { useViewportVisibility } from '../hooks/useViewportVisibility';
 
 const UNKNOWN_CREATOR_LABEL = 'Unknown creator';
 
@@ -26,6 +27,7 @@ export const MediaCard = memo(function MediaCard({
   previewOpen: boolean;
 }) {
   const { bindVideo, videoRef } = useVideoVolume();
+  const { isVisible, targetRef } = useViewportVisibility<HTMLDivElement>();
   const [assetIndex, setAssetIndex] = useState(0);
   const [loadedAssetIds, setLoadedAssetIds] = useState<Set<string>>(
     () => new Set(),
@@ -33,7 +35,9 @@ export const MediaCard = memo(function MediaCard({
   const selectedAsset = item.assets[assetIndex] ?? item.assets[0];
   const hasMultipleAssets = item.assets.length > 1;
   const isSelectedAssetLoading =
-    selectedAsset !== undefined && !loadedAssetIds.has(selectedAsset.id);
+    selectedAsset !== undefined &&
+    (selectedAsset.type === 'image' || isVisible) &&
+    !loadedAssetIds.has(selectedAsset.id);
   const platformLabel =
     item.platform === 'manual' ? MANUAL_UPLOAD_LABEL : item.platform;
 
@@ -99,6 +103,7 @@ export const MediaCard = memo(function MediaCard({
         onTouchStart={(event) => {
           handleTouchStart(event.touches[0]);
         }}
+        ref={targetRef}
       >
         {selectedAsset?.type === 'image' ? (
           <img
@@ -109,7 +114,7 @@ export const MediaCard = memo(function MediaCard({
             onLoad={() => markAssetAsLoaded(selectedAsset.id)}
             src={api.mediaUrl(selectedAsset.url)}
           />
-        ) : selectedAsset ? (
+        ) : selectedAsset?.type === 'video' && isVisible ? (
           <video
             controls
             key={selectedAsset.id}
@@ -121,7 +126,7 @@ export const MediaCard = memo(function MediaCard({
             ref={bindVideo}
             src={api.mediaUrl(selectedAsset.url)}
           />
-        ) : (
+        ) : selectedAsset ? null : (
           <div className="empty-preview">No preview</div>
         )}
         {isSelectedAssetLoading && (
