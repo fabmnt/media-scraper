@@ -57,6 +57,7 @@ interface YtDlpMetadata {
   webpage_url?: string;
   original_url?: string;
   uploader?: string;
+  uploader_id?: string;
   channel?: string;
   description?: string;
   title?: string;
@@ -271,9 +272,6 @@ async function extractWithYtDlp(
       String(options.maxAssetBytes),
       '--no-progress',
       '--newline',
-      '--write-thumbnail',
-      '--convert-thumbnails',
-      'jpg',
       '--merge-output-format',
       'mp4',
       '--format',
@@ -315,11 +313,21 @@ async function extractWithYtDlp(
           );
     if (itemFiles.length === 0) return [];
 
+    const sourceUrl = item.webpage_url ?? item.original_url ?? url;
+    const profileUsername = new URL(sourceUrl).pathname
+      .split('/')
+      .find((segment) => segment.startsWith('@'))
+      ?.slice(1);
     return [
       {
-        sourceId: item.id ?? sourceIdForUrl(item.webpage_url ?? url),
-        sourceUrl: item.webpage_url ?? item.original_url ?? url,
-        authorName: item.uploader ?? item.channel ?? null,
+        sourceId: item.id ?? sourceIdForUrl(sourceUrl),
+        sourceUrl,
+        authorName:
+          item.uploader ??
+          item.uploader_id ??
+          item.channel ??
+          profileUsername ??
+          null,
         caption: item.description ?? item.title ?? null,
         publishedAt: item.timestamp ? new Date(item.timestamp * 1_000) : null,
         files: itemFiles,

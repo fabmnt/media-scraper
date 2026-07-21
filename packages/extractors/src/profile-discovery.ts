@@ -34,6 +34,7 @@ const GALLERY_URL_MESSAGE = 3;
 const GALLERY_ERROR_MESSAGE = -1;
 const INSTAGRAM_STORIES_SPLIT_OPTION = 'extractor.instagram.stories.split=true';
 const INSTAGRAM_HIGHLIGHTS_PATH = 'highlights';
+const TIKTOK_POST_PATH_PATTERN = /\/(?:video|photo)\/\d+(?:[/?#]|$)/;
 // gallery-dl retrieves Highlight reels in batches of five; fetch one batch per lookup.
 const MAX_HIGHLIGHTS_PER_DISCOVERY_PAGE = 4;
 
@@ -103,6 +104,7 @@ const ytDlpProfileMetadataSchema = z.looseObject({
   timestamp: z.number().finite().optional().catch(undefined),
   title: optionalString,
   uploader: optionalString,
+  url: optionalString,
   webpage_url: optionalString,
 });
 type GalleryMessage = z.infer<typeof galleryMessageSchema>;
@@ -434,8 +436,10 @@ function tikTokProfileMessages(
       const entry = ytDlpProfileMetadataSchema.parse(JSON.parse(line));
       if (!entry.id) return [];
 
-      const sourceUrl = entry.webpage_url ?? entry.original_url;
-      const isPhoto = sourceUrl?.includes('/photo/');
+      const postUrl = [entry.webpage_url, entry.original_url, entry.url].find(
+        (url) => url && TIKTOK_POST_PATH_PATTERN.test(url),
+      );
+      const isPhoto = postUrl?.includes('/photo/');
       const publishedAt = entry.timestamp
         ? new Date(entry.timestamp * 1_000).toISOString()
         : undefined;
@@ -447,7 +451,7 @@ function tikTokProfileMessages(
             id: entry.id,
             post_type: isPhoto ? 'image' : undefined,
             post_url:
-              sourceUrl ??
+              postUrl ??
               `https://www.tiktok.com/@${encodeURIComponent(username)}/${isPhoto ? 'photo' : 'video'}/${entry.id}`,
             username: entry.uploader ?? username,
             video: entry.thumbnail ? { cover: entry.thumbnail } : undefined,
