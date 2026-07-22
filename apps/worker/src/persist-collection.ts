@@ -17,6 +17,8 @@ import {
 import type { PreparedMedia } from './collection-files.js';
 
 const STORE_CONCURRENCY = 4;
+const NO_UNIQUE_MEDIA_MESSAGE =
+  'No unique media files were saved for this collection';
 
 export async function persistCollection(
   db: Database,
@@ -199,7 +201,8 @@ export async function persistCollection(
         .update(collections)
         .set({
           status: 'completed',
-          errorMessage: null,
+          errorMessage:
+            acceptedItems.length === 0 ? NO_UNIQUE_MEDIA_MESSAGE : null,
           claimOwner: null,
           claimExpiresAt: null,
           updatedAt: new Date(),

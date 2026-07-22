@@ -230,12 +230,125 @@ export async function automaticProfileRoutes(
         .code(404)
         .send({ message: 'Enabled automatic profile not found' });
     }
+
+    const [failedBackfill] = await db
+      .select({
+        id: profileBackfills.id,
+        pageNumber: profileBackfills.pageNumber,
+      })
+      .from(profileBackfills)
+      .where(
+        and(
+          eq(profileBackfills.automaticProfileId, profile.id),
+          eq(profileBackfills.status, 'failed'),
+        ),
+      );
+    if (failedBackfill) {
+      const [resumedBackfill] = await db
+        .update(profileBackfills)
+        .set({ status: 'queued', lastError: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(profileBackfills.id, failedBackfill.id),
+            eq(profileBackfills.status, 'failed'),
+          ),
+        )
+        .returning({ id: profileBackfills.id });
+      if (resumedBackfill) {
+        try {
+          await queueProfileBackfill(
+            profileBackfillQueue,
+            failedBackfill.id,
+            failedBackfill.pageNumber,
+          );
+        } catch (error) {
+          request.log.error(error, 'Could not resume profile archive');
+          await db
+            .update(profileBackfills)
+            .set({
+              lastError: 'Profile archive could not be resumed',
+              status: 'failed',
+              updatedAt: new Date(),
+            })
+            .where(eq(profileBackfills.id, failedBackfill.id));
+          throw new AutomaticProfileQueueError(
+            'Profile archive could not be resumed',
+          );
+        }
+      }
+    }
+
     try {
       await queueAutomaticProfileCheck(queue, profile.id, true);
     } catch (error) {
       request.log.error(error, 'Could not queue automatic profile check');
       throw new AutomaticProfileQueueError(
         'Automatic profile check could not be queued',
+      );
+    }
+    return reply.code(202).send({ queued: true });
+  });
+
+  app.post('/:id/archive', async (request, reply) => {
+    const { id } = automaticProfileParamsSchema.parse(request.params);
+    const [profile] = await db
+      .select()
+      .from(automaticProfiles)
+      .where(
+        and(eq(automaticProfiles.id, id), eq(automaticProfiles.enabled, true)),
+      );
+    if (!profile) {
+      return reply
+        .code(404)
+        .send({ message: 'Enabled automatic profile not found' });
+    }
+
+    const [existingBackfill] = await db
+      .select()
+      .from(profileBackfills)
+      .where(eq(profileBackfills.automaticProfileId, profile.id));
+    const [backfill] = existingBackfill
+      ? await db
+          .update(profileBackfills)
+          .set({
+            collectionsQueued: 0,
+            completedAt: null,
+            cursor: null,
+            includeHighlights: profile.includeHighlights,
+            includeStories: profile.includeStories,
+            itemsDiscovered: 0,
+            lastError: null,
+            pageNumber: 0,
+            startedAt: null,
+            status: 'queued',
+            updatedAt: new Date(),
+          })
+          .where(eq(profileBackfills.id, existingBackfill.id))
+          .returning()
+      : await db
+          .insert(profileBackfills)
+          .values({
+            automaticProfileId: profile.id,
+            includeHighlights: profile.includeHighlights,
+            includeStories: profile.includeStories,
+          })
+          .returning();
+    if (!backfill) throw new Error('Failed to start profile archive');
+
+    try {
+      await queueProfileBackfill(profileBackfillQueue, backfill.id);
+    } catch (error) {
+      request.log.error(error, 'Could not queue profile archive');
+      await db
+        .update(profileBackfills)
+        .set({
+          lastError: 'Profile archive could not be queued',
+          status: 'failed',
+          updatedAt: new Date(),
+        })
+        .where(eq(profileBackfills.id, backfill.id));
+      throw new AutomaticProfileQueueError(
+        'Profile archive could not be queued',
       );
     }
     return reply.code(202).send({ queued: true });

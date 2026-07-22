@@ -72,6 +72,16 @@ export function AutomaticCollectionsPanel() {
     mutationFn: api.runAutomaticProfile,
     onSuccess: () => setMessage('Profile check queued.'),
   });
+  const archiveProfile = useMutation({
+    onMutate: () => setMessage(''),
+    mutationFn: api.archiveAutomaticProfile,
+    onSuccess: async () => {
+      setMessage('Full profile archive queued.');
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.profileCollectionProgress,
+      });
+    },
+  });
 
   const supportsStories = STORY_SUPPORTED_PLATFORMS.includes(platform);
   const supportsHighlights = HIGHLIGHT_SUPPORTED_PLATFORMS.includes(platform);
@@ -91,12 +101,14 @@ export function AutomaticCollectionsPanel() {
     createProfile.error ??
     updateProfile.error ??
     deleteProfile.error ??
-    runProfile.error;
+    runProfile.error ??
+    archiveProfile.error;
   const isMutating =
     createProfile.isPending ||
     updateProfile.isPending ||
     deleteProfile.isPending ||
-    runProfile.isPending;
+    runProfile.isPending ||
+    archiveProfile.isPending;
 
   return (
     <section className="automatic-collections">
@@ -277,6 +289,14 @@ export function AutomaticCollectionsPanel() {
                   type="button"
                 >
                   Check now
+                </button>
+                <button
+                  className="text-button"
+                  disabled={isMutating || !profile.enabled}
+                  onClick={() => archiveProfile.mutate(profile.id)}
+                  type="button"
+                >
+                  Archive all media
                 </button>
                 <button
                   className="text-button"

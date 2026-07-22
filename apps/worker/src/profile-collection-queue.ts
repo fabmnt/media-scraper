@@ -85,6 +85,8 @@ export async function queueDiscoveredProfileMedia(
               sourceUrl: sql<string>`${collections.sourceUrl}`,
               sourceVersion: collections.discoveredSourceVersion,
               status: collections.status,
+              errorMessage: collections.errorMessage,
+              hasMedia: sql<boolean>`exists (select 1 from ${mediaItems} where ${mediaItems.collectionId} = ${collections.id})`,
             })
             .from(collections)
             .where(
@@ -113,6 +115,36 @@ export async function queueDiscoveredProfileMedia(
       );
     await queueCollections(collectionQueue, failedAutomaticCollections, db);
   }
+
+  const emptyCompletedCollections = collectionRows.filter(
+    (collection) =>
+      collection.origin === 'automatic' &&
+      collection.status === 'completed' &&
+      !collection.hasMedia &&
+      collection.errorMessage === null,
+  );
+  const recoveredEmptyCollections = (
+    await Promise.all(
+      emptyCompletedCollections.map((collection) =>
+        db
+          .update(collections)
+          .set({ status: 'queued', updatedAt: new Date() })
+          .where(
+            and(
+              eq(collections.id, collection.id),
+              eq(collections.status, 'completed'),
+              sql`not exists (select 1 from ${mediaItems} where ${mediaItems.collectionId} = ${collections.id})`,
+            ),
+          )
+          .returning({
+            id: collections.id,
+            platform: sql<Platform>`${collections.platform}`,
+            sourceUrl: sql<string>`${collections.sourceUrl}`,
+          }),
+      ),
+    )
+  ).flat();
+  await queueCollections(collectionQueue, recoveredEmptyCollections, db);
 
   const itemsBySourceId = new Map(items.map((item) => [item.id, item]));
   const refreshedHighlightCollections = (
@@ -188,6 +220,7 @@ export async function queueDiscoveredProfileMedia(
 
   return (
     failedAutomaticCollections.length +
+    recoveredEmptyCollections.length +
     refreshedHighlightCollections.length +
     pendingCollections.length
   );

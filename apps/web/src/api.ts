@@ -136,6 +136,10 @@ export const api = {
     request<{ queued: true }>(`/automatic-profiles/${id}/run`, {
       method: 'POST',
     }),
+  archiveAutomaticProfile: (id: string) =>
+    request<{ queued: true }>(`/automatic-profiles/${id}/archive`, {
+      method: 'POST',
+    }),
   listCollections: ({
     limit,
     offset,
