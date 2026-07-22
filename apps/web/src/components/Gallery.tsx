@@ -74,9 +74,9 @@ function filtersFromUrl(): GalleryFilters {
 export function Gallery() {
   const [filters, setFilters] = useState(filtersFromUrl);
   const { groupMode, platform, search, sortBy } = filters;
-  const [collapsedGroups, setCollapsedGroups] = useState<
-    Record<string, boolean>
-  >({});
+  const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [previewSelection, setPreviewSelection] = useState<PreviewSelection>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteError, setDeleteError] = useState<string>();
@@ -506,8 +506,7 @@ export function Gallery() {
         <div className="media-groups">
           {groups.map((group) => {
             const isGrouped = effectiveGroupMode !== 'none';
-            const isCollapsed =
-              isGrouped && Boolean(collapsedGroups[group.key]);
+            const isCollapsed = isGrouped && !expandedGroupKeys.has(group.key);
             const isLoadingGroup =
               loadMore.isPending && loadMore.variables?.groupKey === group.key;
             const groupContentId = `media-group-${group.key}`;
@@ -520,10 +519,12 @@ export function Gallery() {
                       aria-expanded={!isCollapsed}
                       className="group-toggle"
                       onClick={() =>
-                        setCollapsedGroups((current) => ({
-                          ...current,
-                          [group.key]: !current[group.key],
-                        }))
+                        setExpandedGroupKeys((current) => {
+                          const next = new Set(current);
+                          if (next.has(group.key)) next.delete(group.key);
+                          else next.add(group.key);
+                          return next;
+                        })
                       }
                       type="button"
                     >

@@ -34,10 +34,15 @@ export async function mediaRoutes(
       .where(eq(mediaAssets.id, id));
     if (!asset) return reply.code(404).send({ message: 'Asset not found' });
     if (asset.storageKey) {
+      const responseCacheControl =
+        action === 'content' ? storage.readCacheControl : undefined;
       const url = await storage.createReadUrl(
         asset.storageKey,
         action === 'download' ? asset.fileName : undefined,
+        responseCacheControl,
       );
+      if (responseCacheControl)
+        reply.header('cache-control', responseCacheControl);
       return reply.redirect(url);
     }
     if (!asset.relativePath || !storage.localPath(asset.relativePath)) {

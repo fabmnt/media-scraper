@@ -61,6 +61,7 @@ try {
       position: mediaAssets.position,
       relativePath: mediaAssets.relativePath,
       storageKey: mediaAssets.storageKey,
+      type: mediaAssets.type,
     })
     .from(mediaAssets)
     .leftJoin(
@@ -68,11 +69,7 @@ try {
       eq(thumbnailAssets.thumbnailForAssetId, mediaAssets.id),
     )
     .where(
-      and(
-        eq(mediaAssets.type, 'video'),
-        isNull(mediaAssets.thumbnailForAssetId),
-        isNull(thumbnailAssets.id),
-      ),
+      and(isNull(mediaAssets.thumbnailForAssetId), isNull(thumbnailAssets.id)),
     );
   let createdCount = 0;
   let failedCount = 0;
@@ -108,7 +105,7 @@ try {
         {
           absolutePath: sourcePath,
           durationSeconds: asset.durationSeconds,
-          type: 'video',
+          type: asset.type,
         },
         asset.storageKey ? temporaryDirectory : storage.mediaRoot,
         shutdownController.signal,

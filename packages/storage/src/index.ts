@@ -11,6 +11,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const DELETE_CONCURRENCY = 4;
+const PRESIGNED_URL_CACHE_SAFETY_WINDOW_SECONDS = 60;
 
 export interface S3StorageOptions {
   accessKeyId: string;
@@ -110,7 +111,24 @@ export class MediaStorage {
     }
   }
 
-  async createReadUrl(storageKey: string, downloadFileName?: string) {
+  get readCacheControl() {
+    if (!this.presignedUrlTtlSeconds) return undefined;
+    const safetyWindowSeconds = Math.min(
+      PRESIGNED_URL_CACHE_SAFETY_WINDOW_SECONDS,
+      Math.floor(this.presignedUrlTtlSeconds / 10),
+    );
+    const maxAgeSeconds = Math.max(
+      0,
+      this.presignedUrlTtlSeconds - safetyWindowSeconds,
+    );
+    return `private, max-age=${String(maxAgeSeconds)}`;
+  }
+
+  async createReadUrl(
+    storageKey: string,
+    downloadFileName?: string,
+    responseCacheControl?: string,
+  ) {
     if (!this.s3 || !this.bucket || !this.presignedUrlTtlSeconds) {
       throw new Error('S3 storage is not configured');
     }
@@ -124,6 +142,9 @@ export class MediaStorage {
           ? {
               ResponseContentDisposition: `attachment; filename="${safeFileName}"`,
             }
+          : {}),
+        ...(responseCacheControl
+          ? { ResponseCacheControl: responseCacheControl }
           : {}),
       }),
       { expiresIn: this.presignedUrlTtlSeconds },
