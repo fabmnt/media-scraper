@@ -9,3 +9,5 @@ apps/web/vite.config.js
 data/credentials/
 data/media/*
 !data/media/.gitkeep
+.vercel
+.env*

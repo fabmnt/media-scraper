@@ -1,0 +1,11 @@
+{
+  "buildCommand": "pnpm --filter @media-scraper/web build",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://backend-production-ca85.up.railway.app/:path*"
+    }
+  ]
+}
